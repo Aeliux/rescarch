@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Rescarch Plasma Setup
+Comment=Configure KDE Plasma desktop on first login
+Exec=/bin/bash /usr/share/rescarch/setup-plasma-once.sh
+Hidden=false
+NoDisplay=true
+X-KDE-autostart-phase=2
+X-KDE-autostart-condition=true

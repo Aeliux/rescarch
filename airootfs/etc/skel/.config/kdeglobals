@@ -16,6 +16,11 @@ Theme=breeze-dark
 LookAndFeelPackage=org.kde.breezedark.desktop
 widgetStyle=Breeze
 
+[General]
+BrowserApplication=firefox.desktop
+TerminalApplication=com.mitchellh.ghostty.desktop
+TerminalService=com.mitchellh.ghostty.desktop
+
 [WM]
 activeTheme=Breeze
 activeFont=Roboto,10,-1,5,700,0,0,0,0,0,0,0,0,0,0,1

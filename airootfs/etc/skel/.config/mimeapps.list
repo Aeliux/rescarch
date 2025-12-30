@@ -1,0 +1,46 @@
+[Added Associations]
+
+[Default Applications]
+application/x-compressed-tar=org.kde.ark.desktop
+application/x-tar=org.kde.ark.desktop
+application/zip=org.kde.ark.desktop
+application/x-7z-compressed=org.kde.ark.desktop
+application/x-rar=org.kde.ark.desktop
+application/x-bzip=org.kde.ark.desktop
+application/gzip=org.kde.ark.desktop
+inode/directory=org.kde.dolphin.desktop
+text/html=firefox.desktop
+text/xml=firefox.desktop
+application/xhtml+xml=firefox.desktop
+x-scheme-handler/http=firefox.desktop
+x-scheme-handler/https=firefox.desktop
+x-scheme-handler/ftp=firefox.desktop
+x-scheme-handler/chrome=firefox.desktop
+application/x-extension-htm=firefox.desktop
+application/x-extension-html=firefox.desktop
+application/x-extension-shtml=firefox.desktop
+application/x-extension-xhtml=firefox.desktop
+application/x-extension-xht=firefox.desktop
+text/plain=org.kde.kwrite.desktop
+application/x-shellscript=org.kde.kwrite.desktop
+image/png=org.kde.gwenview.desktop
+image/jpeg=org.kde.gwenview.desktop
+image/jpg=org.kde.gwenview.desktop
+image/gif=org.kde.gwenview.desktop
+image/bmp=org.kde.gwenview.desktop
+image/svg+xml=org.kde.gwenview.desktop
+image/webp=org.kde.gwenview.desktop
+image/tiff=org.kde.gwenview.desktop
+video/mp4=org.kde.dragonplayer.desktop
+video/x-matroska=org.kde.dragonplayer.desktop
+video/x-msvideo=org.kde.dragonplayer.desktop
+video/quicktime=org.kde.dragonplayer.desktop
+video/webm=org.kde.dragonplayer.desktop
+video/mpeg=org.kde.dragonplayer.desktop
+video/x-flv=org.kde.dragonplayer.desktop
+audio/mpeg=org.kde.dragonplayer.desktop
+audio/mp3=org.kde.dragonplayer.desktop
+audio/flac=org.kde.dragonplayer.desktop
+audio/ogg=org.kde.dragonplayer.desktop
+
+[Removed Associations]

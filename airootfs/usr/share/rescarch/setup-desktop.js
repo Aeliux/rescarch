@@ -22,7 +22,12 @@ for (var panelIndex = 0; panelIndex < panels.length; panelIndex++) {
         if (widget.type === "org.kde.plasma.icontasks") {
             widget.currentConfigGroup = ["General"];
             // Set pinned launchers: ghostty, dolphin, gnome disks
-            widget.writeConfig("launchers", ["applications:com.mitchellh.ghostty.desktop","preferred://filemanager","applications:org.gnome.DiskUtility.desktop"]);
+            widget.writeConfig("launchers", [
+                "applications:com.mitchellh.ghostty.desktop",
+                "preferred://filemanager",
+                "preferred://browser",
+                "applications:org.gnome.DiskUtility.desktop"
+            ]);
         }
     }
 }

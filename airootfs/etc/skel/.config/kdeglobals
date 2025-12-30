@@ -1,0 +1,14 @@
+[General]
+# Use Breeze Dark color scheme by default
+ColorScheme=BreezeDark
+Name=Breeze
+
+[Icons]
+Theme=breeze-dark
+
+[KDE]
+LookAndFeelPackage=org.kde.breezedark.desktop
+widgetStyle=Breeze
+
+[WM]
+activeTheme=Breeze

@@ -4,10 +4,20 @@ Mode=Constant
 NightTemperature=3800
 
 [Effect-overview]
-BoarderActivate=9
+BorderActivate=9
 
 [Effect-windowview]
 BorderActivateAll=9
+
+[ElectricBorders]
+TopLeft=None
+Top=None
+TopRight=None
+Right=None
+BottomRight=None
+Bottom=None
+BottomLeft=None
+Left=None
 
 [Windows]
 ElectricBorderDelay=150

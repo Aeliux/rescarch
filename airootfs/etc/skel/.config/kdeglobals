@@ -2,6 +2,11 @@
 # Use Breeze Dark color scheme by default
 ColorScheme=BreezeDark
 Name=Breeze
+font=Roboto,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+fixed=Roboto Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+smallestReadableFont=Roboto,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+toolBarFont=Roboto,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+UseSystemBell=true
 
 [Icons]
 Theme=breeze-dark
@@ -12,3 +17,4 @@ widgetStyle=Breeze
 
 [WM]
 activeTheme=Breeze
+activeFont=Roboto,10,-1,5,700,0,0,0,0,0,0,0,0,0,0,1

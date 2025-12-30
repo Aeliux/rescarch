@@ -5,3 +5,12 @@ NightTemperature=3800
 
 [Effect-overview]
 BoarderActivate=9
+
+[Effect-windowview]
+BorderActivateAll=9
+
+[Windows]
+ElectricBorderDelay=150
+ElectricBorderCooldown=350
+ElectricBorderMaximize=false
+ElectricBorderTiling=false

@@ -2,3 +2,6 @@
 Active=false
 Mode=Constant
 NightTemperature=3800
+
+[Effect-overview]
+BoarderActivate=9

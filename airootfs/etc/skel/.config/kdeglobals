@@ -4,6 +4,7 @@ ColorScheme=BreezeDark
 Name=Breeze
 font=Roboto,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 fixed=Roboto Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+menuFont=Roboto,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 smallestReadableFont=Roboto,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 toolBarFont=Roboto,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 UseSystemBell=true

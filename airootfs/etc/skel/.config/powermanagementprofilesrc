@@ -1,0 +1,9 @@
+[AC][Display]
+TurnOffDisplayIdleTimeoutSec=0
+TurnOffDisplayIdleTimeoutWhenLockedSec=0
+DimDisplayIdleTimeoutSec=0
+
+[AC][SuspendAndShutdown]
+AutoSuspendAction=0
+AutoSuspendIdleTimeoutSec=0
+PowerButtonAction=2

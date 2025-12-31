@@ -1,0 +1,56 @@
+{
+  "policies": {
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "DisableAppUpdate": true,
+    "DontCheckDefaultBrowser": true,
+    "NoDefaultBookmarks": false,
+    "DisableTelemetry": true,
+    "DisableFirefoxStudies": true,
+    "DisablePocket": true,
+    "DisableFirefoxAccounts": true,
+    "DisableAccounts": true,
+    "FirefoxHome": {
+      "Search": false,
+      "TopSites": false,
+      "SponsoredTopSites": false,
+      "Highlights": false,
+      "Pocket": false,
+      "SponsoredPocket": false,
+      "Snippets": false,
+      "Locked": true
+    },
+    "UserMessaging": {
+      "WhatsNew": false,
+      "ExtensionRecommendations": false,
+      "FeatureRecommendations": false,
+      "UrlbarInterventions": false,
+      "SkipOnboarding": true,
+      "MoreFromMozilla": false,
+      "Locked": true
+    },
+    "Homepage": {
+      "URL": "https://wiki.archlinux.org/title/Installation_guide",
+      "Locked": false,
+      "StartPage": "homepage"
+    },
+    "Preferences": {
+      "browser.startup.homepage": {
+        "Value": "https://wiki.archlinux.org/title/Installation_guide",
+        "Status": "default"
+      },
+      "browser.startup.page": {
+        "Value": 1,
+        "Status": "default"
+      },
+      "browser.newtabpage.enabled": {
+        "Value": false,
+        "Status": "default"
+      },
+      "browser.newtab.preload": {
+        "Value": false,
+        "Status": "default"
+      }
+    }
+  }
+}

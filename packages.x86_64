@@ -64,6 +64,7 @@ memtest86+-efi
 mkinitcpio
 mkinitcpio-archiso
 mkinitcpio-nfs-utils
+plymouth
 mmc-utils
 modemmanager
 mtools

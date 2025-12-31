@@ -1,5 +1,11 @@
 {
   "policies": {
+    "ExtensionSettings": {
+      "plasma-browser-integration@kde.org": {
+        "installation_mode": "force_installed",
+        "install_url": "https://addons.mozilla.org/firefox/downloads/latest/plasma-integration/latest.xpi"
+      }
+    },
     "OverrideFirstRunPage": "",
     "OverridePostUpdatePage": "",
     "AutofillAddressEnabled": false,

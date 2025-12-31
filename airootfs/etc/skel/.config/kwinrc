@@ -1,7 +1,10 @@
 [NightColor]
-Active=false
+Active=true
 Mode=Constant
 NightTemperature=3800
+
+[Effect-zoom]
+MouseTracking=2
 
 [Effect-overview]
 BorderActivate=9

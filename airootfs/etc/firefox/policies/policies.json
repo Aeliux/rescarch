@@ -1,0 +1,149 @@
+{
+  "policies": {
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "AutofillAddressEnabled": false,
+    "AutofillCreditCardEnabled": false,
+    "DisableAppUpdate": true,
+    "ExtensionUpdate": false,
+    "DontCheckDefaultBrowser": true,
+    "NoDefaultBookmarks": false,
+    "DisableTelemetry": true,
+    "DisableFirefoxStudies": true,
+    "DisablePocket": true,
+    "DisableFirefoxAccounts": true,
+    "DisableAccounts": true,
+    "DisableFirefoxScreenshots": true,
+    "DisableProfileImport": true,
+    "DisableProfileRefresh": true,
+    "DisableSetDesktopBackground": true,
+    "DisplayBookmarksToolbar": "never",
+    "GenerativeAI": {
+      "Enabled": false,
+      "Locked": true
+    },
+    "HttpsOnlyMode": "enabled",
+    "OfferToSaveLogins": false,
+    "SkipTermsOfUse": true,
+    "TranslateEnabled": false,
+    "EnableTrackingProtection": {
+      "Value": true,
+      "Cryptomining": true,
+      "Fingerprinting": true,
+      "EmailTracking": true,
+      "SuspectedFingerprinting": true,
+      "BaselineExceptions": true,
+      "ConvenienceExceptions": false
+    },
+    "FirefoxHome": {
+      "Search": false,
+      "TopSites": false,
+      "SponsoredTopSites": false,
+      "Highlights": false,
+      "Pocket": false,
+      "SponsoredPocket": false,
+      "Snippets": false,
+      "Locked": true
+    },
+    "UserMessaging": {
+      "WhatsNew": false,
+      "ExtensionRecommendations": false,
+      "FeatureRecommendations": false,
+      "UrlbarInterventions": false,
+      "SkipOnboarding": true,
+      "MoreFromMozilla": false,
+      "Locked": true
+    },
+    "Homepage": {
+      "URL": "https://wiki.archlinux.org/title/Installation_guide",
+      "Locked": false,
+      "StartPage": "homepage"
+    },
+    "Preferences": {
+      "browser.startup.homepage_override.mstone": {
+        "Value": "ignore",
+        "Status": "locked"
+      },
+      "browser.newtabpage.enabled": {
+        "Value": false,
+        "Status": "default"
+      },
+      "browser.newtab.preload": {
+        "Value": false,
+        "Status": "default"
+      },
+      "browser.tabs.firefox-view": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.tabs.firefox-view-next": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.tabs.firefox-view.enabled": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "extensions.ui.dictionary.hidden": {
+        "Value": true,
+        "Status": "default"
+      },
+      "extensions.ui.extension.hidden": {
+        "Value": false,
+        "Status": "default"
+      },
+      "extensions.ui.locale.hidden": {
+        "Value": true,
+        "Status": "default"
+      },
+      "extensions.ui.sitepermission.hidden": {
+        "Value": true,
+        "Status": "default"
+      },
+      "extensions.activeThemeID": {
+        "Value": "firefox-compact-dark@mozilla.org",
+        "Status": "default"
+      },
+      "ui.systemUsesDarkTheme": {
+        "Value": 1,
+        "Status": "default"
+      },
+      "browser.theme.toolbar-theme": {
+        "Value": 0,
+        "Status": "default"
+      },
+      "browser.theme.content-theme": {
+        "Value": 0,
+        "Status": "default"
+      },
+      "browser.in-content.dark-mode": {
+        "Value": true,
+        "Status": "default"
+      },
+      "ui.prefersReducedMotion": {
+        "Value": 0,
+        "Status": "default"
+      },
+      "browser.newtabpage.activity-stream.section.highlights.includePocket": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.urlbar.suggest.quicksuggest.sponsored": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.urlbar.suggest.quicksuggest.nonsponsored": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.urlbar.quicksuggest.enabled": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "pdfjs.enableScripting": {
+        "Value": false,
+        "Status": "locked"
+      }
+    }
+  }
+}

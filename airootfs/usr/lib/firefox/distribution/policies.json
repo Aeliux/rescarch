@@ -10,6 +10,9 @@
     "DisablePocket": true,
     "DisableFirefoxAccounts": true,
     "DisableAccounts": true,
+    "DisableProfileImport": true,
+    "DisableProfileRefresh": true,
+    "DisableSetDesktopBackground": true,
     "FirefoxHome": {
       "Search": false,
       "TopSites": false,
@@ -50,6 +53,34 @@
       "browser.newtab.preload": {
         "Value": false,
         "Status": "default"
+      },
+      "extensions.activeThemeID": {
+        "Value": "firefox-compact-dark@mozilla.org",
+        "Status": "default"
+      },
+      "ui.systemUsesDarkTheme": {
+        "Value": 1,
+        "Status": "default"
+      },
+      "browser.theme.toolbar-theme": {
+        "Value": 0,
+        "Status": "default"
+      },
+      "browser.theme.content-theme": {
+        "Value": 0,
+        "Status": "default"
+      },
+      "browser.ml.chat.enabled": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.ml.chat.sidebar": {
+        "Value": false,
+        "Status": "locked"
+      },
+      "browser.ml.enable": {
+        "Value": false,
+        "Status": "locked"
       }
     }
   }

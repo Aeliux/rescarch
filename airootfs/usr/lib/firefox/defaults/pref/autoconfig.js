@@ -10,6 +10,22 @@ pref("browser.newtab.preload", false);
 pref("browser.aboutwelcome.enabled", false);
 pref("trailhead.firstrun.didSeeAboutWelcome", true);
 
+// Enable dark mode
+pref("extensions.activeThemeID", "firefox-compact-dark@mozilla.org");
+pref("ui.systemUsesDarkTheme", 1);
+pref("browser.theme.toolbar-theme", 0);
+pref("browser.theme.content-theme", 0);
+pref("browser.in-content.dark-mode", true);
+pref("ui.prefersReducedMotion", 0);
+
+// Disable AI features
+pref("browser.ml.chat.enabled", false);
+pref("browser.ml.chat.sidebar", false);
+pref("browser.ml.enable", false);
+pref("browser.ml.chat.provider", "");
+pref("browser.translations.enable", false);
+pref("browser.translations.automaticallyPopup", false);
+
 // Disable telemetry and data collection
 pref("datareporting.healthreport.uploadEnabled", false);
 pref("datareporting.policy.dataSubmissionEnabled", false);
@@ -56,3 +72,18 @@ pref("breakpad.reportURL", "");
 pref("browser.tabs.crashReporting.sendReport", false);
 pref("browser.crashReports.unsubmittedCheck.enabled", false);
 pref("browser.crashReports.unsubmittedCheck.autoSubmit2", false);
+
+// Disable screenshot tool
+pref("extensions.screenshots.disabled", true);
+
+// Disable form autofill
+pref("extensions.formautofill.addresses.enabled", false);
+pref("extensions.formautofill.creditCards.enabled", false);
+
+// Disable password manager prompts (optional - user can still use it manually)
+pref("signon.rememberSignons", false);
+pref("signon.autofillForms", false);
+pref("signon.generation.enabled", false);
+
+// Disable PDF.js assistant
+pref("pdfjs.enableScripting", false);

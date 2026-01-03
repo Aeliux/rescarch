@@ -24,11 +24,11 @@ prepare
 
 artifacts=()
 
-boot_vars=(
+declare -A boot_vars=(
   ["RA_BOOT_SPLASH"]="quiet splash loglevel=3 rd.udev.log_level=3 vt.global_cursor_default=0"
   ["RA_BOOT_CMDLINE"]="archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% cow_label=RESCARCH_DATA cow_nofail=y"
 )
-pacman_vars=(
+declare -A pacman_vars=(
   ["RA_REPOSITORY"]="file://$(realpath out/repo)"
 )
 

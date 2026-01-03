@@ -74,7 +74,7 @@ mdadm
 memtest86+
 memtest86+-efi
 mkinitcpio
-mkinitcpio-archiso
+mkinitcpio-rescarch
 mkinitcpio-nfs-utils
 mmc-utils
 modemmanager

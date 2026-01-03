@@ -1,0 +1,37 @@
+# Maintainer: Alireza Poodineh <itsaeliux@gmail.com>
+
+pkgname=mkinitcpio-rescarch
+pkgver=73o2
+pkgrel=1
+pkgdesc='Patched mkinitcpio-archiso for RescArch'
+arch=(any)
+url='https://github.com/aeliux/mkinitcpio-rescarch'
+license=(GPL-3.0-or-later)
+depends=(
+  bash
+  device-mapper
+  mkinitcpio
+)
+makedepends=(git)
+checkdepends=(
+  shellcheck
+  shfmt
+)
+optdepends=(
+  'curl: for PXE over HTTP'
+  'gnupg: for PGP signature verification of rootfs over PXE'
+  'mkinitcpio-nfs-utils: for PXE over NFS'
+  'nbd: for PXE over NBD'
+  'openssl: for CMS signature verification of rootfs over PXE'
+  'pv: for status display during copy to RAM'
+)
+source=(git+$url.git#tag=v$pkgver)
+sha256sums=('SKIP')
+
+check() {
+  make -k check -C $pkgname
+}
+
+package() {
+  make DESTDIR="$pkgdir/" PREFIX=/usr install -C $pkgname
+}

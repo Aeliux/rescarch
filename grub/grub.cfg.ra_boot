@@ -44,9 +44,15 @@ timeout_style=menu
 
 # Menu entries
 
-menuentry "RescArch Live Environment (%ARCH%, ${archiso_platform})" --class arch --class gnu-linux --class gnu --class os --id 'archlinux' {
+menuentry "RescArch" --class arch --class gnu-linux --class gnu --class os --id 'archlinux' {
     set gfxpayload=keep
-    linux /%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux %RA_KERNEL_CMD%
+    linux /%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux %RA_BOOT_CMDLINE% %RA_BOOT_SPLASH%
+    initrd /%INSTALL_DIR%/boot/%ARCH%/initramfs-linux.img
+}
+
+menuentry "RescArch with boot logs" --class arch --class gnu-linux --class gnu --class os --id 'archlinux' {
+    set gfxpayload=keep
+    linux /%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux %RA_BOOT_CMDLINE%
     initrd /%INSTALL_DIR%/boot/%ARCH%/initramfs-linux.img
 }
 

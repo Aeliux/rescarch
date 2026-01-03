@@ -25,7 +25,8 @@ prepare
 artifacts=()
 
 boot_vars=(
-  ["RA_KERNEL_CMD"]="archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% cow_label=RESCARCH_DATA quiet splash loglevel=3 rd.udev.log_level=3 vt.global_cursor_default=0"
+  ["RA_BOOT_SPLASH"]="quiet splash loglevel=3 rd.udev.log_level=3 vt.global_cursor_default=0"
+  ["RA_BOOT_CMDLINE"]="archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% cow_label=RESCARCH_DATA cow_nofail=y"
 )
 pacman_vars=(
   ["RA_REPOSITORY"]="file://$(realpath out/repo)"

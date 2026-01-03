@@ -1,0 +1,5 @@
+title    RescArch fast boot
+sort-key 03
+linux    /%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux
+initrd   /%INSTALL_DIR%/boot/%ARCH%/initramfs-linux.img
+options  %RA_BOOT_CMDLINE% copytoram=n

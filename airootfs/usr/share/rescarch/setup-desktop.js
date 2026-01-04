@@ -21,9 +21,9 @@ for (var panelIndex = 0; panelIndex < panels.length; panelIndex++) {
         // Find the icon tasks widget (task manager)
         if (widget.type === "org.kde.plasma.icontasks") {
             widget.currentConfigGroup = ["General"];
-            // Set pinned launchers: ghostty, dolphin, gnome disks
+            // Set pinned launchers
             widget.writeConfig("launchers", [
-                "applications:com.mitchellh.ghostty.desktop",
+                "preferred://terminal",
                 "preferred://filemanager",
                 "preferred://browser",
                 "applications:org.gnome.DiskUtility.desktop"

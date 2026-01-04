@@ -18,8 +18,6 @@ widgetStyle=Breeze
 
 [General]
 BrowserApplication=firefox.desktop
-TerminalApplication=com.mitchellh.ghostty.desktop
-TerminalService=com.mitchellh.ghostty.desktop
 
 [WM]
 activeTheme=Breeze

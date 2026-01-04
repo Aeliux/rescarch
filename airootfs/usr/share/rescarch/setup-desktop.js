@@ -23,7 +23,7 @@ for (var panelIndex = 0; panelIndex < panels.length; panelIndex++) {
             widget.currentConfigGroup = ["General"];
             // Set pinned launchers
             widget.writeConfig("launchers", [
-                "preferred://terminal",
+                "applications:org.kde.konsole.desktop",
                 "preferred://filemanager",
                 "preferred://browser",
                 "applications:org.gnome.DiskUtility.desktop"

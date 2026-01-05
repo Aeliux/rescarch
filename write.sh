@@ -50,16 +50,25 @@ print_step() {
 # Function to print substep progress
 print_substep() {
     CURRENT_SUBSTEP=$((CURRENT_SUBSTEP + 1))
+    local tree_char="├─"
+    if [[ $TOTAL_SUBSTEPS -gt 0 ]] && [[ $CURRENT_SUBSTEP -eq $TOTAL_SUBSTEPS ]]; then
+        tree_char="└─"
+    fi
+    
     if [[ $TOTAL_SUBSTEPS -gt 0 ]]; then
-        echo -e "\033[0;36m  ├─ [$CURRENT_SUBSTEP/$TOTAL_SUBSTEPS] $1\033[0m"
+        echo -e "\033[0;36m  $tree_char [$CURRENT_SUBSTEP/$TOTAL_SUBSTEPS] $1\033[0m"
     else
-        echo -e "\033[0;36m  ├─ $1\033[0m"
+        echo -e "\033[0;36m  $tree_char $1\033[0m"
     fi
 }
 
 # Function to print info message
 print_info() {
-    echo -e "\033[0;34m  │  $1\033[0m"
+    local tree_char="├─>"
+    if [[ $TOTAL_SUBSTEPS -gt 0 ]] && [[ $CURRENT_SUBSTEP -eq $TOTAL_SUBSTEPS ]]; then
+        tree_char=" ─>"
+    fi
+    echo -e "\033[0;34m  $tree_char $1\033[0m"
 }
 
 # Cleanup functions
@@ -223,7 +232,6 @@ verify_rescarch_iso() {
         
         if [[ $indicators -ge 1 ]]; then
             is_rescarch=true
-            print_success "ISO appears to be a RescArch ISO"
         fi
     else
         print_error "Failed to mount ISO file for verification"
@@ -516,7 +524,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Calculate total steps for progress tracking
-TOTAL_STEPS=2  # Wipe, Write ISO (includes sync)
+TOTAL_STEPS=3  # Validation, Wipe, Write ISO (includes sync)
 if [[ "$CREATE_OFFLINE" == true ]]; then
     TOTAL_STEPS=$((TOTAL_STEPS + 2))  # Prepare packages, Create offline partition
 fi
@@ -524,7 +532,15 @@ if [[ "$CREATE_PERSISTENT" == true ]]; then
     TOTAL_STEPS=$((TOTAL_STEPS + 1))  # Create persistent partition
 fi
 
+# ═══════════════════════════════════════════════════════════════════════════
+# STEP 1: VALIDATION AND CHECKS
+# ═══════════════════════════════════════════════════════════════════════════
+
+print_step "Validation and system checks"
+TOTAL_SUBSTEPS=4
+
 # Check if running as root
+print_substep "Checking system requirements"
 if [[ $EUID -ne 0 ]]; then
     print_error "This script must be run as root"
     exit 1
@@ -543,71 +559,68 @@ for tool in "${REQUIRED_TOOLS[@]}"; do
     fi
 done
 
-# Validate required arguments
+# Validate required arguments and ISO file
+print_substep "Validating ISO file"
 if [[ -z "$ISO_PATH" ]]; then
     print_error "ISO file path is required. Use -i or --iso"
     echo "Use -h or --help for usage information"
     exit 1
 fi
 
+if [[ ! -f "$ISO_PATH" ]]; then
+    print_error "ISO file not found: $ISO_PATH"
+    exit 1
+fi
+
+if [[ ! -r "$ISO_PATH" ]]; then
+    print_error "ISO file is not readable: $ISO_PATH"
+    exit 1
+fi
+
+ISO_FILE_SIZE=$(stat -c%s "$ISO_PATH" 2>/dev/null || echo "0")
+if [[ "$ISO_FILE_SIZE" -lt 1048576 ]]; then
+    print_error "ISO file seems too small (< 1MB). Is this a valid ISO?"
+    exit 1
+fi
+ISO_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$ISO_FILE_SIZE" 2>/dev/null || echo "$ISO_FILE_SIZE bytes")
+print_info "ISO size: $ISO_SIZE_HUMAN"
+
+if [[ "$SKIP_CONFIRM" == false ]]; then
+    verify_rescarch_iso "$ISO_PATH"
+else
+    print_info "Skipping ISO verification (-y flag)"
+fi
+
+# Validate target device
+print_substep "Validating target device"
 if [[ -z "$TARGET_DEVICE" ]]; then
     print_error "Target device is required. Use -d or --device"
     echo "Use -h or --help for usage information"
     exit 1
 fi
 
-# Validate ISO file exists
-if [[ ! -f "$ISO_PATH" ]]; then
-    print_error "ISO file not found: $ISO_PATH"
-    exit 1
-fi
-
-# Validate ISO file is readable
-if [[ ! -r "$ISO_PATH" ]]; then
-    print_error "ISO file is not readable: $ISO_PATH"
-    exit 1
-fi
-
-# Check ISO file size (should be > 1MB)
-ISO_FILE_SIZE=$(stat -c%s "$ISO_PATH" 2>/dev/null || echo "0")
-if [[ "$ISO_FILE_SIZE" -lt 1048576 ]]; then
-    print_error "ISO file seems too small (< 1MB). Is this a valid ISO?"
-    exit 1
-fi
-
-# Verify this is a RescArch ISO
-if [[ "$SKIP_CONFIRM" == false ]]; then
-    verify_rescarch_iso "$ISO_PATH"
-fi
-
 # Normalize device path (remove trailing slashes and partition numbers if accidentally included)
 TARGET_DEVICE=$(echo "$TARGET_DEVICE" | sed 's:/*$::')
 
-# Validate target device path format
 if [[ ! "$TARGET_DEVICE" =~ ^/dev/[a-z]+ ]]; then
     print_error "Invalid device path format: $TARGET_DEVICE"
     print_error "Expected format: /dev/sdX or /dev/nvmeXnY"
     exit 1
 fi
 
-# Ensure device path doesn't include partition number
 if [[ "$TARGET_DEVICE" =~ [0-9]$ ]] && [[ ! "$TARGET_DEVICE" =~ nvme[0-9]+n[0-9]+$ ]]; then
     print_error "Device path should not include partition number: $TARGET_DEVICE"
     print_error "Use the disk device (e.g., /dev/sdb, not /dev/sdb1)"
     exit 1
 fi
 
-# Validate target device exists
 if [[ ! -b "$TARGET_DEVICE" ]]; then
     print_error "Invalid block device: $TARGET_DEVICE"
     print_error "Device does not exist or is not a block device"
     exit 1
 fi
 
-# CRITICAL: Prevent writing to system disks
 DEVICE_NAME=$(basename "$TARGET_DEVICE")
-
-# Check if device is mounted as root or contains root filesystem
 ROOT_DEVICE=$(lsblk -no PKNAME "$(findmnt -n -o SOURCE /)" 2>/dev/null || echo "")
 if [[ "$DEVICE_NAME" == "$ROOT_DEVICE" ]] || [[ "$TARGET_DEVICE" == "/dev/$ROOT_DEVICE" ]]; then
     print_error "BLOCKED: Target device contains the root filesystem!"
@@ -615,13 +628,11 @@ if [[ "$DEVICE_NAME" == "$ROOT_DEVICE" ]] || [[ "$TARGET_DEVICE" == "/dev/$ROOT_
     exit 1
 fi
 
-# Check for any mounted partitions on target device
 MOUNTED_PARTS=$(lsblk -ln -o NAME,MOUNTPOINT "$TARGET_DEVICE" 2>/dev/null | awk '$2 != "" {print $1, $2}')
 if [[ -n "$MOUNTED_PARTS" ]]; then
     print_warning "Device has mounted partitions:"
     echo "$MOUNTED_PARTS"
     
-    # Check if any mount points are critical system directories
     if echo "$MOUNTED_PARTS" | grep -qE '\s+(/|/boot|/home|/usr|/var|/etc|/opt)$'; then
         print_error "BLOCKED: Device contains mounted system directories!"
         print_error "Refusing to write to device with system mounts"
@@ -629,9 +640,22 @@ if [[ -n "$MOUNTED_PARTS" ]]; then
     fi
 fi
 
-# Get ISO label and size
+# Gather information
+print_substep "Gathering device and ISO information"
 ISO_LABEL=$(get_iso_label "$ISO_PATH")
-ISO_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$ISO_FILE_SIZE" 2>/dev/null || echo "$ISO_FILE_SIZE bytes")
+DEVICE_SIZE=$(lsblk -b -d -n -o SIZE "$TARGET_DEVICE" 2>/dev/null || echo "0")
+DEVICE_MODEL=$(lsblk -d -n -o MODEL "$TARGET_DEVICE" 2>/dev/null || echo "Unknown")
+DEVICE_TRAN=$(lsblk -d -n -o TRAN "$TARGET_DEVICE" 2>/dev/null || echo "Unknown")
+DEVICE_TYPE=$(lsblk -d -n -o TYPE "$TARGET_DEVICE" 2>/dev/null || echo "Unknown")
+DEVICE_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$DEVICE_SIZE" 2>/dev/null || echo "$DEVICE_SIZE bytes")
+IS_REMOVABLE=$(cat "/sys/block/$(basename "$TARGET_DEVICE")/removable" 2>/dev/null || echo "0")
+print_info "Device: $TARGET_DEVICE ($DEVICE_SIZE_HUMAN, $DEVICE_MODEL)"
+
+print_success "All validation checks passed"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# OFFLINE PACKAGES PREPARATION (if requested)
+# ═══════════════════════════════════════════════════════════════════════════
 
 # Prepare offline packages if requested (do this BEFORE confirmation)
 PKG_COUNT=0
@@ -703,7 +727,7 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     fi
     
     # Get filenames using pacman -Sp
-    echo "Getting package filenames..."
+    print_info "Getting package filenames..."
     NEEDED_FILES=$(pacman -Sp --print-format '%f' "${unique_packages[@]}" 2>&1)
     
     if [[ $? -ne 0 ]]; then
@@ -724,6 +748,7 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     done <<< "$NEEDED_FILES"
     
     print_substep "Copying ${#packages_to_copy[@]} package files"
+    print_info "Copying from cache: $PACMAN_CACHE"
     # Copy packages from cache
     for filename in "${packages_to_copy[@]}"; do
         pkg_file="$PACMAN_CACHE/$filename"
@@ -751,6 +776,7 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     fi
     
     print_substep "Creating package database"
+    print_info "Building repository database..."
     cd "$TEMP_PACKAGES"
     
     # Use explicit extensions to exclude .sig files
@@ -767,6 +793,11 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     
     print_success "Prepared $PKG_COUNT signed packages ($PACKAGES_SIZE_HUMAN)"
 fi
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PERSISTENT SIZE CALCULATION (if requested)
+# ═══════════════════════════════════════════════════════════════════════════
+
 # Parse persistent size if specified
 if [[ "$CREATE_PERSISTENT" == true ]] && [[ -n "$PERSISTENT_SIZE" ]]; then
     PERSISTENT_SIZE_BYTES=$(parse_size "$PERSISTENT_SIZE")
@@ -776,12 +807,9 @@ if [[ "$CREATE_PERSISTENT" == true ]] && [[ -n "$PERSISTENT_SIZE" ]]; then
     PERSISTENT_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$PERSISTENT_SIZE_BYTES")
 fi
 
-# Get device information
-DEVICE_SIZE=$(lsblk -b -d -n -o SIZE "$TARGET_DEVICE" 2>/dev/null || echo "0")
-DEVICE_MODEL=$(lsblk -d -n -o MODEL "$TARGET_DEVICE" 2>/dev/null || echo "Unknown")
-DEVICE_TRAN=$(lsblk -d -n -o TRAN "$TARGET_DEVICE" 2>/dev/null || echo "Unknown")
-DEVICE_TYPE=$(lsblk -d -n -o TYPE "$TARGET_DEVICE" 2>/dev/null || echo "Unknown")
-DEVICE_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$DEVICE_SIZE" 2>/dev/null || echo "$DEVICE_SIZE bytes")
+# ═══════════════════════════════════════════════════════════════════════════
+# DISPLAY SUMMARY AND CONFIRMATIONS
+# ═══════════════════════════════════════════════════════════════════════════
 
 echo
 echo "========================================"
@@ -816,8 +844,6 @@ echo "========================================"
 echo
 
 # Check if device is removable
-IS_REMOVABLE=$(cat "/sys/block/$(basename "$TARGET_DEVICE")/removable" 2>/dev/null || echo "0")
-
 if [[ "$IS_REMOVABLE" != "1" ]] && [[ "$DEVICE_TRAN" != "usb" ]]; then
     print_warning "This device does NOT appear to be a removable USB device!"
     print_warning "Transport type: $DEVICE_TRAN, Removable: $IS_REMOVABLE"
@@ -844,6 +870,10 @@ else
     sleep 3
 fi
 
+# ═══════════════════════════════════════════════════════════════════════════
+# MAIN OPERATIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
 # Unmount any mounted partitions
 echo
 umount "${TARGET_DEVICE}"* 2>/dev/null || true
@@ -855,6 +885,7 @@ print_step "Wiping device $TARGET_DEVICE"
 TOTAL_SUBSTEPS=3
 
 print_substep "Unmounting all partitions"
+print_info "Unmounting ${TARGET_DEVICE}*"
 umount "${TARGET_DEVICE}"* 2>/dev/null || true
 sync
 
@@ -865,6 +896,7 @@ if ! wipefs -a "$TARGET_DEVICE" 2>/dev/null; then
 fi
 
 print_substep "Refreshing partition table"
+print_info "Syncing and updating kernel partition table"
 sync
 blockdev --rereadpt "$TARGET_DEVICE" 2>/dev/null || true
 partprobe "$TARGET_DEVICE" 2>/dev/null || true
@@ -883,6 +915,7 @@ if ! dd if="$ISO_PATH" of="$TARGET_DEVICE" bs=4M status=progress oflag=sync; the
 fi
 
 print_substep "Syncing filesystem"
+print_info "Flushing buffers to disk..."
 sync
 sleep 2
 print_success "ISO written and synced successfully"
@@ -916,6 +949,7 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     print_info "EROFS image: $EROFS_SIZE_HUMAN (partition: ${PACKAGES_SIZE_MB}MB)"
     
     print_substep "Creating partition ($PACKAGES_SIZE_MB MB)"
+    print_info "Refreshing partition table"
     # Refresh partition table
     refresh_partitions "$TARGET_DEVICE"
     
@@ -945,6 +979,7 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     fi
     
     print_substep "Waiting for partition to appear"
+    print_info "Refreshing and waiting for $TARGET_DEVICE"
     # Refresh partition table again
     refresh_partitions "$TARGET_DEVICE"
     
@@ -970,6 +1005,7 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     fi
     
     print_substep "Cleaning up and syncing"
+    print_info "Removing temporary files and flushing buffers"
     sync
     rm -f "$EROFS_IMAGE"
     unregister_file "$EROFS_IMAGE"
@@ -983,6 +1019,7 @@ if [[ "$CREATE_PERSISTENT" == true ]]; then
     TOTAL_SUBSTEPS=4
     
     print_substep "Detecting partition table"
+    print_info "Refreshing partition table"
     # Refresh partition table
     refresh_partitions "$TARGET_DEVICE"
     
@@ -1020,6 +1057,7 @@ if [[ "$CREATE_PERSISTENT" == true ]]; then
     fi
     
     print_substep "Waiting for partition to appear"
+    print_info "Refreshing and waiting for $TARGET_DEVICE"
     # Refresh partition table again
     refresh_partitions "$TARGET_DEVICE"
     
@@ -1038,6 +1076,7 @@ if [[ "$CREATE_PERSISTENT" == true ]]; then
     fi
     
     print_substep "Formatting as ext4"
+    print_info "Creating ext4 filesystem on $PERSIST_PART"
     # Format partition as ext4
     if ! mkfs.ext4 -q -F -L "RESCARCH_DATA" "$PERSIST_PART"; then
         print_error "Failed to format persistent partition"

@@ -8,6 +8,14 @@ set -e
 # Stage tracking
 CURRENT_STEP=0
 TOTAL_STEPS=0
+CURRENT_SUBSTEP=0
+TOTAL_SUBSTEPS=0
+
+# Cleanup tracking
+declare -a CLEANUP_FILES
+declare -a CLEANUP_DIRS
+declare -a CLEANUP_MOUNTS
+CLEANUP_IN_PROGRESS=false
 
 # Colors for output
 RED='\033[0;31m'
@@ -31,20 +39,162 @@ print_success() {
 # Function to print step progress
 print_step() {
     CURRENT_STEP=$((CURRENT_STEP + 1))
+    CURRENT_SUBSTEP=0
+    TOTAL_SUBSTEPS=0
     echo
-    echo -e "\033[1;36m━━━ Step $CURRENT_STEP/$TOTAL_STEPS: $1 ━━━\033[0m"
+    echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+    echo -e "\033[1;36m━━━ Step $CURRENT_STEP/$TOTAL_STEPS: $1\033[0m"
+    echo -e "\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 }
+
+# Function to print substep progress
+print_substep() {
+    CURRENT_SUBSTEP=$((CURRENT_SUBSTEP + 1))
+    if [[ $TOTAL_SUBSTEPS -gt 0 ]]; then
+        echo -e "\033[0;36m  ├─ [$CURRENT_SUBSTEP/$TOTAL_SUBSTEPS] $1\033[0m"
+    else
+        echo -e "\033[0;36m  ├─ $1\033[0m"
+    fi
+}
+
+# Function to print info message
+print_info() {
+    echo -e "\033[0;34m  │  $1\033[0m"
+}
+
+# Cleanup functions
+cleanup_mount() {
+    local mount_point="$1"
+    if mountpoint -q "$mount_point" 2>/dev/null; then
+        umount "$mount_point" 2>/dev/null || umount -l "$mount_point" 2>/dev/null || true
+    fi
+}
+
+cleanup_all() {
+    # Prevent recursive cleanup calls
+    if [[ "$CLEANUP_IN_PROGRESS" == "true" ]]; then
+        return
+    fi
+    CLEANUP_IN_PROGRESS=true
+    
+    if [[ ${#CLEANUP_MOUNTS[@]} -gt 0 ]] || [[ ${#CLEANUP_DIRS[@]} -gt 0 ]] || [[ ${#CLEANUP_FILES[@]} -gt 0 ]]; then
+        echo
+        echo -e "\033[0;33m═══ Cleanup ═══\033[0m"
+    fi
+    
+    # Unmount in reverse order
+    for ((i=${#CLEANUP_MOUNTS[@]}-1; i>=0; i--)); do
+        local mount_point="${CLEANUP_MOUNTS[i]}"
+        if [[ -n "$mount_point" ]] && mountpoint -q "$mount_point" 2>/dev/null; then
+            echo -e "\033[0;33m  Unmounting: $mount_point\033[0m"
+            cleanup_mount "$mount_point"
+        fi
+    done
+    
+    # Remove files
+    for file in "${CLEANUP_FILES[@]}"; do
+        if [[ -n "$file" ]] && [[ -f "$file" ]]; then
+            echo -e "\033[0;33m  Removing file: $file\033[0m"
+            rm -f "$file" 2>/dev/null || true
+        fi
+    done
+    
+    # Remove directories in reverse order
+    for ((i=${#CLEANUP_DIRS[@]}-1; i>=0; i--)); do
+        local dir="${CLEANUP_DIRS[i]}"
+        if [[ -n "$dir" ]] && [[ -d "$dir" ]]; then
+            echo -e "\033[0;33m  Removing directory: $dir\033[0m"
+            rm -rf "$dir" 2>/dev/null || true
+        fi
+    done
+    
+    # Clear arrays
+    CLEANUP_MOUNTS=()
+    CLEANUP_FILES=()
+    CLEANUP_DIRS=()
+}
+
+# Register cleanup items
+register_file() {
+    CLEANUP_FILES+=("$1")
+}
+
+register_dir() {
+    CLEANUP_DIRS+=("$1")
+}
+
+register_mount() {
+    CLEANUP_MOUNTS+=("$1")
+}
+
+# Unregister cleanup items (when successfully handled)
+unregister_file() {
+    local file="$1"
+    local new_array=()
+    for f in "${CLEANUP_FILES[@]}"; do
+        [[ "$f" != "$file" ]] && new_array+=("$f")
+    done
+    CLEANUP_FILES=("${new_array[@]}")
+}
+
+unregister_dir() {
+    local dir="$1"
+    local new_array=()
+    for d in "${CLEANUP_DIRS[@]}"; do
+        [[ "$d" != "$dir" ]] && new_array+=("$d")
+    done
+    CLEANUP_DIRS=("${new_array[@]}")
+}
+
+unregister_mount() {
+    local mount="$1"
+    local new_array=()
+    for m in "${CLEANUP_MOUNTS[@]}"; do
+        [[ "$m" != "$mount" ]] && new_array+=("$m")
+    done
+    CLEANUP_MOUNTS=("${new_array[@]}")
+}
+
+# Trap handlers
+trap_exit() {
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]] && [[ "$CLEANUP_IN_PROGRESS" == "false" ]]; then
+        echo
+        print_error "Script exited with error code: $exit_code"
+    fi
+    cleanup_all
+}
+
+trap_int() {
+    echo
+    print_warning "Interrupted by user (Ctrl+C)"
+    cleanup_all
+    exit 130
+}
+
+trap_err() {
+    local exit_code=$?
+    if [[ "$CLEANUP_IN_PROGRESS" == "false" ]]; then
+        echo
+        print_error "Command failed with exit code: $exit_code"
+    fi
+}
+
+# Set up traps
+trap trap_exit EXIT
+trap trap_int INT TERM
+trap trap_err ERR
 
 # Function to verify RescArch ISO
 verify_rescarch_iso() {
     local iso_path="$1"
     local temp_mount=$(mktemp -d)
+    register_dir "$temp_mount"
     local is_rescarch=false
-    
-    echo "Verifying ISO file..."
     
     # Try to mount ISO and check for RescArch-specific markers
     if mount -o loop,ro "$iso_path" "$temp_mount" 2>/dev/null; then
+        register_mount "$temp_mount"
         # Check for multiple RescArch indicators
         local indicators=0
         
@@ -68,7 +218,8 @@ verify_rescarch_iso() {
             indicators=$((indicators + 1))
         fi
         
-        umount "$temp_mount" 2>/dev/null || true
+        cleanup_mount "$temp_mount"
+        unregister_mount "$temp_mount"
         
         if [[ $indicators -ge 1 ]]; then
             is_rescarch=true
@@ -80,6 +231,7 @@ verify_rescarch_iso() {
     fi
     
     rmdir "$temp_mount" 2>/dev/null || true
+    unregister_dir "$temp_mount"
     
     if [[ "$is_rescarch" == false ]]; then
         print_warning "Could not verify this is a RescArch ISO"
@@ -193,7 +345,6 @@ wait_for_partition() {
     local part_path="$1"
     local timeout="${2:-15}"
     
-    echo "Waiting for partition $part_path to appear..."
     for i in $(seq 1 $timeout); do
         if [[ -b "$part_path" ]]; then
             return 0
@@ -242,10 +393,10 @@ create_partition() {
         # GPT partition table - use sgdisk
         if [[ -z "$size_mb" ]] || [[ "$size_mb" -eq 0 ]]; then
             # Use all remaining space
-            sgdisk -n 0:0:0 -t 0:8300 "$device" 2>&1 || result=$?
+            sgdisk -q -n 0:0:0 -t 0:8300 "$device" 2>&1 || result=$?
         else
             # Use specified size
-            sgdisk -n 0:0:+${size_mb}M -t 0:8300 "$device" 2>&1 || result=$?
+            sgdisk -q -n 0:0:+${size_mb}M -t 0:8300 "$device" 2>&1 || result=$?
         fi
         
     else
@@ -365,7 +516,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Calculate total steps for progress tracking
-TOTAL_STEPS=3  # Wipe, Write ISO, Sync
+TOTAL_STEPS=2  # Wipe, Write ISO (includes sync)
 if [[ "$CREATE_OFFLINE" == true ]]; then
     TOTAL_STEPS=$((TOTAL_STEPS + 2))  # Prepare packages, Create offline partition
 fi
@@ -382,7 +533,7 @@ fi
 # Check for required tools
 REQUIRED_TOOLS=(lsblk dd mkfs.ext4 partprobe mount umount parted sfdisk blkid blockdev bc)
 if [[ "$CREATE_OFFLINE" == true ]]; then
-    REQUIRED_TOOLS+=(repo-add tar pactree)
+    REQUIRED_TOOLS+=(repo-add tar pactree mkfs.erofs)
 fi
 
 for tool in "${REQUIRED_TOOLS[@]}"; do
@@ -490,21 +641,21 @@ TEMP_PACKAGES=""
 
 if [[ "$CREATE_OFFLINE" == true ]]; then
     print_step "Preparing offline packages"
-    echo "Resolving dependencies and downloading packages..."
+    TOTAL_SUBSTEPS=6
     
     # Create temporary directory for packages
     TEMP_PACKAGES=$(mktemp -d)
-    trap "rm -rf '$TEMP_PACKAGES'" EXIT
+    register_dir "$TEMP_PACKAGES"
     
     # Resolve dependencies for specified packages
-    echo "Resolving dependencies for: $OFFLINE_PACKAGES"
+    print_substep "Resolving dependencies for: $OFFLINE_PACKAGES"
     
     # Convert comma-separated list to space-separated
     PKG_LIST="${OFFLINE_PACKAGES//,/ }"
     
     # Update sync database
-    echo "Updating package database..."
-    if ! pacman -Sy; then
+    print_substep "Updating package database"
+    if ! pacman -Sy --quiet; then
         print_error "Failed to update package database"
         exit 1
     fi
@@ -525,6 +676,7 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
         exit 1
     fi
     
+    print_substep "Removing duplicate packages"
     # Remove duplicates
     declare -A seen
     declare -a unique_packages
@@ -535,11 +687,11 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
         fi
     done
     
-    echo "Resolved ${#unique_packages[@]} packages (including dependencies)"
+    print_info "Resolved ${#unique_packages[@]} packages (including dependencies)"
     
     # Download all packages to cache
-    echo "Downloading packages to cache..."
-    if ! pacman -Sw --noconfirm --cachedir "$PACMAN_CACHE" "${unique_packages[@]}"; then
+    print_substep "Downloading packages to cache"
+    if ! pacman -Sw --noconfirm --quiet --cachedir "$PACMAN_CACHE" "${unique_packages[@]}"; then
         print_error "Failed to download packages"
         exit 1
     fi
@@ -571,8 +723,7 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
         fi
     done <<< "$NEEDED_FILES"
     
-    echo "Copying ${#packages_to_copy[@]} package files..."
-    
+    print_substep "Copying ${#packages_to_copy[@]} package files"
     # Copy packages from cache
     for filename in "${packages_to_copy[@]}"; do
         pkg_file="$PACMAN_CACHE/$filename"
@@ -596,11 +747,10 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     
     if [[ $PKG_COUNT -eq 0 ]]; then
         print_error "No packages were copied"
-        rm -rf "$TEMP_PACKAGES"
         exit 1
     fi
     
-    echo "Creating package database..."
+    print_substep "Creating package database"
     cd "$TEMP_PACKAGES"
     
     # Use explicit extensions to exclude .sig files
@@ -696,53 +846,82 @@ fi
 
 # Unmount any mounted partitions
 echo
-echo "Unmounting any mounted partitions on $TARGET_DEVICE..."
 umount "${TARGET_DEVICE}"* 2>/dev/null || true
 sync
 sleep 1
 
 # Fast wipe target device
 print_step "Wiping device $TARGET_DEVICE"
-echo "Removing existing signatures and partition table..."
+TOTAL_SUBSTEPS=3
+
+print_substep "Unmounting all partitions"
+umount "${TARGET_DEVICE}"* 2>/dev/null || true
+sync
+
+print_substep "Removing partition table and signatures"
 if ! wipefs -a "$TARGET_DEVICE" 2>/dev/null; then
     print_warning "wipefs not available, using fallback method"
     dd if=/dev/zero of="$TARGET_DEVICE" bs=1M count=10 status=none 2>/dev/null || true
 fi
+
+print_substep "Refreshing partition table"
 sync
 blockdev --rereadpt "$TARGET_DEVICE" 2>/dev/null || true
 partprobe "$TARGET_DEVICE" 2>/dev/null || true
 sleep 2
-print_success "Device wiped"
+print_success "Device wiped successfully"
 
 # Write ISO to device
 print_step "Writing ISO to $TARGET_DEVICE"
+TOTAL_SUBSTEPS=2
+
+print_substep "Writing ISO image ($ISO_SIZE_HUMAN)"
 ISO_LABEL=$(get_iso_label "$ISO_PATH")
 if ! dd if="$ISO_PATH" of="$TARGET_DEVICE" bs=4M status=progress oflag=sync; then
     print_error "Failed to write ISO to device"
     exit 1
 fi
-sync
-sleep 2
-print_success "ISO written successfully"
 
-print_step "Syncing filesystem"
+print_substep "Syncing filesystem"
 sync
 sleep 2
-print_success "Filesystem synced"
+print_success "ISO written and synced successfully"
 
 # Create offline package repository if requested
 if [[ "$CREATE_OFFLINE" == true ]]; then
     print_step "Creating offline package partition"
+    TOTAL_SUBSTEPS=5
     
-    # Calculate required size with buffer
-    PACKAGES_SIZE_MB=$((PACKAGES_SIZE / 1024 / 1024 + 100))  # Add 100MB buffer
+    # Create EROFS image with highest compression (lzma) and dedupe for minimal size
+    print_substep "Creating EROFS image with LZMA compression"
+    EROFS_IMAGE=$(mktemp -u).erofs
+    register_file "$EROFS_IMAGE"
+    # -zlzma: use LZMA compression (highest compression)
+    # -L: set volume label
+    # --all-root: make all files owned by root
+    # -T0: set all timestamps to 0 for reproducibility
+    if ! mkfs.erofs -zlzma -L "RA_PACKAGES" --all-root -T0 "$EROFS_IMAGE" "$TEMP_PACKAGES"; then
+        print_error "Failed to create EROFS image"
+        exit 1
+    fi
     
+    # Calculate EROFS image size and add 10MB overhead
+    EROFS_SIZE=$(stat -c%s "$EROFS_IMAGE" 2>/dev/null || echo "0")
+    if [[ "$EROFS_SIZE" -eq 0 ]]; then
+        print_error "Failed to determine EROFS image size"
+        exit 1
+    fi
+    PACKAGES_SIZE_MB=$((EROFS_SIZE / 1024 / 1024 + 10))  # Add 10MB overhead
+    EROFS_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$EROFS_SIZE")
+    print_info "EROFS image: $EROFS_SIZE_HUMAN (partition: ${PACKAGES_SIZE_MB}MB)"
+    
+    print_substep "Creating partition ($PACKAGES_SIZE_MB MB)"
     # Refresh partition table
     refresh_partitions "$TARGET_DEVICE"
     
     # Detect partition table type
     PART_TABLE_TYPE=$(get_partition_table_type "$TARGET_DEVICE")
-    echo "Detected partition table: $PART_TABLE_TYPE"
+    print_info "Partition table type: $PART_TABLE_TYPE"
     
     if [[ "$PART_TABLE_TYPE" == "unknown" ]]; then
         print_error "Could not determine partition table type"
@@ -753,7 +932,6 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     # Get current highest partition number to know what the new one will be
     CURRENT_LAST=$(get_last_partition_number "$TARGET_DEVICE" "$PART_TABLE_TYPE")
     NEW_PART_NUM=$((CURRENT_LAST + 1))
-    echo "Will create partition $NEW_PART_NUM"
     
     # Create partition
     if ! create_partition "$TARGET_DEVICE" "$PACKAGES_SIZE_MB" "$PART_TABLE_TYPE"; then
@@ -766,6 +944,7 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
         exit 1
     fi
     
+    print_substep "Waiting for partition to appear"
     # Refresh partition table again
     refresh_partitions "$TARGET_DEVICE"
     
@@ -783,50 +962,27 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
         exit 1
     fi
     
-    # Format partition as ext4 with fixed label
-    echo "Formatting packages partition..."
-    if ! mkfs.ext4 -F -L "RESCARCH_PACKAGE" "$PACKAGES_PART"; then
-        print_error "Failed to format packages partition"
+    print_substep "Writing EROFS image to $PACKAGES_PART"
+    # Write EROFS image directly to partition
+    if ! dd if="$EROFS_IMAGE" of="$PACKAGES_PART" bs=1M status=progress oflag=sync; then
+        print_error "Failed to write EROFS image to partition"
         exit 1
     fi
     
-    # Mount and copy packages
-    TEMP_MOUNT=$(mktemp -d)
-    if ! mount "$PACKAGES_PART" "$TEMP_MOUNT"; then
-        print_error "Failed to mount packages partition"
-        rmdir "$TEMP_MOUNT"
-        exit 1
-    fi
-    
-    echo "Copying packages to partition..."
-    # Use rsync for progress display if available, otherwise use cp
-    if command -v rsync &>/dev/null; then
-        if ! rsync -ah --info=progress2 --no-i-r "$TEMP_PACKAGES"/ "$TEMP_MOUNT"/; then
-            print_error "Failed to copy packages"
-            umount "$TEMP_MOUNT"
-            rmdir "$TEMP_MOUNT"
-            exit 1
-        fi
-    else
-        if ! cp -r "$TEMP_PACKAGES"/* "$TEMP_MOUNT"/; then
-            print_error "Failed to copy packages"
-            umount "$TEMP_MOUNT"
-            rmdir "$TEMP_MOUNT"
-            exit 1
-        fi
-    fi
-    
+    print_substep "Cleaning up and syncing"
     sync
-    umount "$TEMP_MOUNT"
-    rmdir "$TEMP_MOUNT"
+    rm -f "$EROFS_IMAGE"
+    unregister_file "$EROFS_IMAGE"
     
-    print_success "Offline package repository created: $PACKAGES_PART"
+    print_success "Offline package repository created: $PACKAGES_PART (EROFS, $EROFS_SIZE_HUMAN)"
 fi
 
 # Create persistent storage partition if requested
 if [[ "$CREATE_PERSISTENT" == true ]]; then
     print_step "Creating persistent storage partition"
+    TOTAL_SUBSTEPS=4
     
+    print_substep "Detecting partition table"
     # Refresh partition table
     refresh_partitions "$TARGET_DEVICE"
     
@@ -847,9 +1003,9 @@ if [[ "$CREATE_PERSISTENT" == true ]]; then
     PERSIST_SIZE_MB=0
     if [[ -n "$PERSISTENT_SIZE" ]]; then
         PERSIST_SIZE_MB=$((PERSISTENT_SIZE_BYTES / 1024 / 1024))
-        echo "Creating persistent partition $NEW_PART_NUM ($PERSISTENT_SIZE_HUMAN)..."
+        print_substep "Creating partition ($PERSISTENT_SIZE_HUMAN)"
     else
-        echo "Creating persistent partition $NEW_PART_NUM with all remaining space..."
+        print_substep "Creating partition (all remaining space)"
     fi
     
     # Create partition
@@ -863,6 +1019,7 @@ if [[ "$CREATE_PERSISTENT" == true ]]; then
         exit 1
     fi
     
+    print_substep "Waiting for partition to appear"
     # Refresh partition table again
     refresh_partitions "$TARGET_DEVICE"
     
@@ -880,9 +1037,9 @@ if [[ "$CREATE_PERSISTENT" == true ]]; then
         exit 1
     fi
     
+    print_substep "Formatting as ext4"
     # Format partition as ext4
-    echo "Formatting persistent partition as ext4..."
-    if ! mkfs.ext4 -F -L "RESCARCH_DATA" "$PERSIST_PART"; then
+    if ! mkfs.ext4 -q -F -L "RESCARCH_DATA" "$PERSIST_PART"; then
         print_error "Failed to format persistent partition"
         exit 1
     fi

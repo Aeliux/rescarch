@@ -29,6 +29,7 @@ dragon
 e2fsprogs
 edk2-shell
 efibootmgr
+erofs-utils
 ethtool
 exfatprogs
 f2fs-tools
@@ -71,8 +72,8 @@ mdadm
 memtest86+
 memtest86+-efi
 mkinitcpio
-mkinitcpio-rescarch
 mkinitcpio-nfs-utils
+mkinitcpio-rescarch
 mmc-utils
 modemmanager
 mtools

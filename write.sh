@@ -29,10 +29,10 @@ show_help() {
     cat << EOF
 Usage: $(basename "$0") [OPTIONS]
 
-Burns an ISO image to a block device with optional persistent storage partition.
+Burns an RescArch ISO image to a block device.
 
 OPTIONS:
-    -i, --iso PATH          Path to ISO file (required)
+    -i, --iso PATH          Path to RescArch ISO file (required)
     -d, --device DEVICE     Target device path, e.g., /dev/sdb (required)
     -p, --persistent        Create persistent storage partition
     -y, --yes              Skip confirmation prompts (DANGEROUS - use with caution)
@@ -40,13 +40,13 @@ OPTIONS:
 
 EXAMPLES:
     # Burn ISO with interactive confirmation
-    $(basename "$0") -i ubuntu.iso -d /dev/sdb
+    $(basename "$0") -i rescarch.iso -d /dev/sdb
 
     # Burn ISO with persistent storage
-    $(basename "$0") -i ubuntu.iso -d /dev/sdb -p
+    $(basename "$0") -i rescarch.iso -d /dev/sdb -p
 
     # Skip confirmations (use with extreme caution)
-    $(basename "$0") -i ubuntu.iso -d /dev/sdb -y
+    $(basename "$0") -i rescarch.iso -d /dev/sdb -y
 
 WARNING:
     This script will PERMANENTLY ERASE all data on the target device.

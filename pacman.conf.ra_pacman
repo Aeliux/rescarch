@@ -1,4 +1,5 @@
 [options]
+CacheDir=%RA_PACKAGE_CACHE%
 HoldPkg = pacman glibc
 Architecture = auto
 

@@ -5,6 +5,10 @@
 
 set -e
 
+# Stage tracking
+CURRENT_STEP=0
+TOTAL_STEPS=0
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -22,6 +26,13 @@ print_warning() {
 
 print_success() {
     echo -e "${GREEN}SUCCESS: $1${NC}"
+}
+
+# Function to print step progress
+print_step() {
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+    echo
+    echo -e "\033[1;36m━━━ Step $CURRENT_STEP/$TOTAL_STEPS: $1 ━━━\033[0m"
 }
 
 # Function to verify RescArch ISO
@@ -133,6 +144,118 @@ get_iso_label() {
     echo "$label"
 }
 
+# Function to refresh partition table and inform kernel
+refresh_partitions() {
+    local device="$1"
+    sync
+    blockdev --rereadpt "$device" 2>/dev/null || true
+    partprobe "$device" 2>/dev/null || true
+    sleep 3
+}
+
+# Function to get partition table type
+get_partition_table_type() {
+    local device="$1"
+    local pttype=$(blkid -p -s PTTYPE -o value "$device" 2>/dev/null || echo "unknown")
+    echo "$pttype"
+}
+
+# Function to get last partition number
+get_last_partition_number() {
+    local device="$1"
+    local pttype="$2"
+    local last_num=""
+    
+    if [[ "$pttype" == "dos" ]] || [[ "$pttype" == "msdos" ]]; then
+        # Use sfdisk for MBR - it properly handles hybrid ISO partitions
+        last_num=$(sfdisk -l "$device" 2>/dev/null | grep "^${device}" | awk '{print $1}' | sed "s|${device}p\?||" | sort -n | tail -1)
+    elif [[ "$pttype" == "gpt" ]]; then
+        last_num=$(sgdisk -p "$device" 2>/dev/null | grep "^ *[0-9]" | tail -1 | awk '{print $1}')
+    fi
+    
+    echo "$last_num"
+}
+
+# Function to get partition device path
+get_partition_path() {
+    local device="$1"
+    local part_num="$2"
+    
+    if [[ "$device" =~ nvme || "$device" =~ mmcblk ]]; then
+        echo "${device}p${part_num}"
+    else
+        echo "${device}${part_num}"
+    fi
+}
+
+# Function to wait for partition to appear
+wait_for_partition() {
+    local part_path="$1"
+    local timeout="${2:-15}"
+    
+    echo "Waiting for partition $part_path to appear..."
+    for i in $(seq 1 $timeout); do
+        if [[ -b "$part_path" ]]; then
+            return 0
+        fi
+        sleep 1
+    done
+    
+    print_error "Partition $part_path was not created"
+    print_info "Available partitions:"
+    lsblk "$(dirname "$part_path" | sed 's/p$//')" 2>/dev/null || lsblk
+    return 1
+}
+
+# Function to create partition
+create_partition() {
+    local device="$1"
+    local size_mb="$2"  # Empty or 0 means use all remaining space
+    local pttype="$3"
+    
+    local result=0
+    
+    if [[ "$pttype" == "dos" ]] || [[ "$pttype" == "msdos" ]]; then
+        # MBR/DOS partition table - use sfdisk --append
+        # sfdisk properly handles hybrid ISO partitions and appends without overwriting
+        local last_sector=$(sfdisk -l "$device" 2>/dev/null | grep "^${device}" | awk '{print $3}' | sort -n | tail -1)
+        
+        if [[ -z "$last_sector" ]]; then
+            print_error "Could not determine last partition end"
+            sfdisk -l "$device" 2>/dev/null || true
+            return 1
+        fi
+        
+        # Start one sector after the last partition
+        local start_sector=$((last_sector + 1))
+        
+        if [[ -z "$size_mb" ]] || [[ "$size_mb" -eq 0 ]]; then
+            # Use all remaining space - empty size field means use all
+            echo "${start_sector},,83" | sfdisk --append --no-reread --force "$device" 2>&1 | grep -vE "(iso9660|wipefs|Checking that|recommended)" || result=$?
+        else
+            # Use specified size - convert MB to sectors (MB * 1024 * 1024 / 512)
+            local size_sectors=$((size_mb * 2048))
+            echo "${start_sector},${size_sectors},83" | sfdisk --append --no-reread --force "$device" 2>&1 | grep -vE "(iso9660|wipefs|Checking that|recommended)" || result=$?
+        fi
+        
+    elif [[ "$pttype" == "gpt" ]]; then
+        # GPT partition table - use sgdisk
+        if [[ -z "$size_mb" ]] || [[ "$size_mb" -eq 0 ]]; then
+            # Use all remaining space
+            sgdisk -n 0:0:0 -t 0:8300 "$device" 2>&1 || result=$?
+        else
+            # Use specified size
+            sgdisk -n 0:0:+${size_mb}M -t 0:8300 "$device" 2>&1 || result=$?
+        fi
+        
+    else
+        print_error "Unsupported partition table type: $pttype"
+        return 1
+    fi
+    
+    return $result
+}
+
 # Function to show help
 show_help() {
     cat << EOF
@@ -146,8 +269,11 @@ OPTIONS:
     -p, --persistent [SIZE] Create persistent storage partition
                             SIZE is optional (e.g., 1G, 500M, 2T)
                             If omitted, uses all remaining space
-    -o, --offline           Create offline package repository from rescarch package cache
-                            (creates separate partition with signed packages)
+    -o, --offline PKGS      Create offline package repository
+                            PKGS is comma-separated package list
+                            (e.g., base,linux,bash - includes dependencies)
+                            Searches system cache and downloads if needed
+    --pacman-cache PATH     Pacman cache directory (default: /var/cache/pacman/pkg)
     -y, --yes              Skip confirmation prompts (DANGEROUS - use with caution)
     -h, --help             Show this help message
 
@@ -162,7 +288,10 @@ EXAMPLES:
     $(basename "$0") -i rescarch.iso -d /dev/sdb -p
 
     # Burn ISO with offline packages and persistent storage
-    $(basename "$0") -i rescarch.iso -d /dev/sdb -o -p 1G
+    $(basename "$0") -i rescarch.iso -d /dev/sdb -o base,linux,linux-firmware -p 1G
+
+    # Burn ISO with full system packages
+    $(basename "$0") -i rescarch.iso -d /dev/sdb -o base,linux,plasma,firefox
 
     # Skip confirmations (use with extreme caution)
     $(basename "$0") -i rescarch.iso -d /dev/sdb -y
@@ -179,6 +308,8 @@ TARGET_DEVICE=""
 CREATE_PERSISTENT=false
 PERSISTENT_SIZE=""
 CREATE_OFFLINE=false
+OFFLINE_PACKAGES=""
+PACMAN_CACHE="/var/cache/pacman/pkg"
 SKIP_CONFIRM=false
 
 while [[ $# -gt 0 ]]; do
@@ -203,7 +334,19 @@ while [[ $# -gt 0 ]]; do
             ;;
         -o|--offline)
             CREATE_OFFLINE=true
-            shift
+            # Package list is required
+            if [[ -n "$2" ]] && [[ "$2" != -* ]]; then
+                OFFLINE_PACKAGES="$2"
+                shift 2
+            else
+                print_error "Package list is required with -o option"
+                echo "Example: -o base,linux,linux-firmware"
+                exit 1
+            fi
+            ;;
+        --pacman-cache)
+            PACMAN_CACHE="$2"
+            shift 2
             ;;
         -y|--yes)
             SKIP_CONFIRM=true
@@ -221,6 +364,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Calculate total steps for progress tracking
+TOTAL_STEPS=3  # Wipe, Write ISO, Sync
+if [[ "$CREATE_OFFLINE" == true ]]; then
+    TOTAL_STEPS=$((TOTAL_STEPS + 2))  # Prepare packages, Create offline partition
+fi
+if [[ "$CREATE_PERSISTENT" == true ]]; then
+    TOTAL_STEPS=$((TOTAL_STEPS + 1))  # Create persistent partition
+fi
+
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
     print_error "This script must be run as root"
@@ -228,9 +380,9 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # Check for required tools
-REQUIRED_TOOLS=(lsblk dd sgdisk mkfs.ext4 partprobe mount umount)
+REQUIRED_TOOLS=(lsblk dd mkfs.ext4 partprobe mount umount parted sfdisk blkid blockdev bc)
 if [[ "$CREATE_OFFLINE" == true ]]; then
-    REQUIRED_TOOLS+=(repo-add tar gpg)
+    REQUIRED_TOOLS+=(repo-add tar pactree)
 fi
 
 for tool in "${REQUIRED_TOOLS[@]}"; do
@@ -337,71 +489,122 @@ PACKAGES_SIZE_HUMAN=""
 TEMP_PACKAGES=""
 
 if [[ "$CREATE_OFFLINE" == true ]]; then
-    echo
-    echo "Preparing offline package repository..."
-    
-    PACKAGES_DIR="out/packages"
-    if [[ ! -d "$PACKAGES_DIR" ]]; then
-        print_error "Packages directory not found: $PACKAGES_DIR"
-        exit 1
-    fi
+    print_step "Preparing offline packages"
+    echo "Resolving dependencies and downloading packages..."
     
     # Create temporary directory for packages
     TEMP_PACKAGES=$(mktemp -d)
     trap "rm -rf '$TEMP_PACKAGES'" EXIT
     
-    echo "Scanning for signed packages..."
+    # Resolve dependencies for specified packages
+    echo "Resolving dependencies for: $OFFLINE_PACKAGES"
     
-    # Find all package files and keep only the latest version
-    declare -A latest_packages
+    # Convert comma-separated list to space-separated
+    PKG_LIST="${OFFLINE_PACKAGES//,/ }"
     
-    # Parse package files and group by name
-    for pkg_file in "$PACKAGES_DIR"/*.pkg.tar.{zst,xz,gz}; do
-        [[ -f "$pkg_file" ]] || continue
-        
-        # Check if package has a signature
-        if [[ ! -f "${pkg_file}.sig" ]]; then
-            continue
-        fi
-        
-        # Extract package name and version using pacman-style parsing
-        filename=$(basename "$pkg_file")
-        # Remove extension
-        pkgname_ver="${filename%.pkg.tar.*}"
-        
-        # Extract package name (everything before last -version-release)
-        if [[ "$pkgname_ver" =~ ^(.+)-([^-]+)-([^-]+)$ ]]; then
-            pkgname="${BASH_REMATCH[1]}"
-            pkgver="${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
-            
-            # Store or update latest version
-            if [[ -z "${latest_packages[$pkgname]}" ]]; then
-                latest_packages[$pkgname]="$pkg_file"
-            else
-                # Simple comparison - you might want to use vercmp for better accuracy
-                latest_packages[$pkgname]="$pkg_file"
-            fi
+    # Update sync database
+    echo "Updating package database..."
+    if ! pacman -Sy; then
+        print_error "Failed to update package database"
+        exit 1
+    fi
+    
+    # Use pactree to get all packages including dependencies (from sync database)
+    # -s: use sync database, -l: linear output, -u: unique packages
+    declare -a all_packages
+    for pkg in $PKG_LIST; do
+        while IFS= read -r pkgname; do
+            [[ -z "$pkgname" ]] && continue
+            all_packages+=("$pkgname")
+        done < <(pactree -slu "$pkg")
+    done
+    
+    if [[ ${#all_packages[@]} -eq 0 ]]; then
+        print_error "Failed to resolve package dependencies"
+        print_info "Check if packages exist: pacman -Ss $PKG_LIST"
+        exit 1
+    fi
+    
+    # Remove duplicates
+    declare -A seen
+    declare -a unique_packages
+    for pkg in "${all_packages[@]}"; do
+        if [[ -z "${seen[$pkg]}" ]]; then
+            seen[$pkg]=1
+            unique_packages+=("$pkg")
         fi
     done
     
-    # Copy latest packages and their signatures
-    for pkg_file in "${latest_packages[@]}"; do
-        if [[ -f "$pkg_file" ]] && [[ -f "${pkg_file}.sig" ]]; then
-            cp "$pkg_file" "$TEMP_PACKAGES/"
-            cp "${pkg_file}.sig" "$TEMP_PACKAGES/"
-            PKG_COUNT=$((PKG_COUNT + 1))
+    echo "Resolved ${#unique_packages[@]} packages (including dependencies)"
+    
+    # Download all packages to cache
+    echo "Downloading packages to cache..."
+    if ! pacman -Sw --noconfirm --cachedir "$PACMAN_CACHE" "${unique_packages[@]}"; then
+        print_error "Failed to download packages"
+        exit 1
+    fi
+
+    # Verify pacman cache directory exists
+    if [[ ! -d "$PACMAN_CACHE" ]]; then
+        print_error "Pacman cache directory not found: $PACMAN_CACHE"
+        exit 1
+    fi
+    
+    # Get filenames using pacman -Sp
+    echo "Getting package filenames..."
+    NEEDED_FILES=$(pacman -Sp --print-format '%f' "${unique_packages[@]}" 2>&1)
+    
+    if [[ $? -ne 0 ]]; then
+        print_error "Failed to get package filenames"
+        echo "$NEEDED_FILES"
+        exit 1
+    fi
+    
+    # Build array of unique filenames
+    declare -A seen_files
+    declare -a packages_to_copy
+    while IFS= read -r filename; do
+        [[ -z "$filename" ]] && continue
+        if [[ -z "${seen_files[$filename]}" ]]; then
+            seen_files[$filename]=1
+            packages_to_copy+=("$filename")
         fi
+    done <<< "$NEEDED_FILES"
+    
+    echo "Copying ${#packages_to_copy[@]} package files..."
+    
+    # Copy packages from cache
+    for filename in "${packages_to_copy[@]}"; do
+        pkg_file="$PACMAN_CACHE/$filename"
+        sig_file="${pkg_file}.sig"
+        
+        if [[ ! -f "$pkg_file" ]]; then
+            print_error "Package not found: $pkg_file"
+            exit 1
+        fi
+        
+        if [[ ! -f "$sig_file" ]]; then
+            print_error "Signature not found: $sig_file"
+            print_info "Package signatures are required for offline repository"
+            exit 1
+        fi
+        
+        cp "$pkg_file" "$TEMP_PACKAGES/"
+        cp "$sig_file" "$TEMP_PACKAGES/"
+        PKG_COUNT=$((PKG_COUNT + 1))
     done
     
     if [[ $PKG_COUNT -eq 0 ]]; then
-        print_error "No signed packages found in $PACKAGES_DIR"
+        print_error "No packages were copied"
         rm -rf "$TEMP_PACKAGES"
         exit 1
     fi
     
     echo "Creating package database..."
     cd "$TEMP_PACKAGES"
-    if ! repo-add rescarch.db.tar.gz *.pkg.tar.* 2>/dev/null; then
+    
+    # Use explicit extensions to exclude .sig files
+    if ! repo-add rescarch.db.tar.gz *.pkg.tar.*[^.sig] 2>/dev/null; then
         print_error "Failed to create package database"
         cd - > /dev/null
         exit 1
@@ -414,7 +617,6 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     
     print_success "Prepared $PKG_COUNT signed packages ($PACKAGES_SIZE_HUMAN)"
 fi
-
 # Parse persistent size if specified
 if [[ "$CREATE_PERSISTENT" == true ]] && [[ -n "$PERSISTENT_SIZE" ]]; then
     PERSISTENT_SIZE_BYTES=$(parse_size "$PERSISTENT_SIZE")
@@ -499,60 +701,91 @@ umount "${TARGET_DEVICE}"* 2>/dev/null || true
 sync
 sleep 1
 
+# Fast wipe target device
+print_step "Wiping device $TARGET_DEVICE"
+echo "Removing existing signatures and partition table..."
+if ! wipefs -a "$TARGET_DEVICE" 2>/dev/null; then
+    print_warning "wipefs not available, using fallback method"
+    dd if=/dev/zero of="$TARGET_DEVICE" bs=1M count=10 status=none 2>/dev/null || true
+fi
+sync
+blockdev --rereadpt "$TARGET_DEVICE" 2>/dev/null || true
+partprobe "$TARGET_DEVICE" 2>/dev/null || true
+sleep 2
+print_success "Device wiped"
+
 # Write ISO to device
-echo
-echo "Writing ISO to $TARGET_DEVICE..."
+print_step "Writing ISO to $TARGET_DEVICE"
+ISO_LABEL=$(get_iso_label "$ISO_PATH")
 if ! dd if="$ISO_PATH" of="$TARGET_DEVICE" bs=4M status=progress oflag=sync; then
     print_error "Failed to write ISO to device"
     exit 1
 fi
 sync
+sleep 2
+print_success "ISO written successfully"
+
+print_step "Syncing filesystem"
+sync
+sleep 2
+print_success "Filesystem synced"
 
 # Create offline package repository if requested
 if [[ "$CREATE_OFFLINE" == true ]]; then
-    echo
-    echo "Creating offline package partition..."
+    print_step "Creating offline package partition"
     
     # Calculate required size with buffer
     PACKAGES_SIZE_MB=$((PACKAGES_SIZE / 1024 / 1024 + 100))  # Add 100MB buffer
     
     # Refresh partition table
-    partprobe "$TARGET_DEVICE" 2>/dev/null || true
-    sleep 2
+    refresh_partitions "$TARGET_DEVICE"
     
-    # Create partition for packages (partition 3)
-    if ! sgdisk -n 0:0:+${PACKAGES_SIZE_MB}M -t 0:8300 "$TARGET_DEVICE"; then
-        print_error "Failed to create packages partition"
+    # Detect partition table type
+    PART_TABLE_TYPE=$(get_partition_table_type "$TARGET_DEVICE")
+    echo "Detected partition table: $PART_TABLE_TYPE"
+    
+    if [[ "$PART_TABLE_TYPE" == "unknown" ]]; then
+        print_error "Could not determine partition table type"
+        blkid -p "$TARGET_DEVICE" || true
         exit 1
     fi
     
-    # Refresh partition table
-    partprobe "$TARGET_DEVICE" 2>/dev/null || true
-    sleep 2
+    # Get current highest partition number to know what the new one will be
+    CURRENT_LAST=$(get_last_partition_number "$TARGET_DEVICE" "$PART_TABLE_TYPE")
+    NEW_PART_NUM=$((CURRENT_LAST + 1))
+    echo "Will create partition $NEW_PART_NUM"
     
-    # Determine partition name
-    if [[ "$TARGET_DEVICE" =~ nvme || "$TARGET_DEVICE" =~ mmcblk ]]; then
-        PACKAGES_PART="${TARGET_DEVICE}p3"
-    else
-        PACKAGES_PART="${TARGET_DEVICE}3"
+    # Create partition
+    if ! create_partition "$TARGET_DEVICE" "$PACKAGES_SIZE_MB" "$PART_TABLE_TYPE"; then
+        print_error "Failed to create packages partition"
+        if [[ "$PART_TABLE_TYPE" == "dos" ]] || [[ "$PART_TABLE_TYPE" == "msdos" ]]; then
+            parted -s "$TARGET_DEVICE" print || true
+        else
+            sgdisk -p "$TARGET_DEVICE" || true
+        fi
+        exit 1
     fi
     
-    # Wait for partition to appear
-    for i in {1..10}; do
-        if [[ -b "$PACKAGES_PART" ]]; then
-            break
-        fi
-        sleep 1
-    done
+    # Refresh partition table again
+    refresh_partitions "$TARGET_DEVICE"
     
-    if [[ ! -b "$PACKAGES_PART" ]]; then
-        print_error "Packages partition $PACKAGES_PART was not created"
+    # Get the new partition path using the number we calculated
+    LAST_PART_NUM=$NEW_PART_NUM
+    if [[ -z "$LAST_PART_NUM" ]]; then
+        print_error "Could not determine partition number"
+        exit 1
+    fi
+    
+    PACKAGES_PART=$(get_partition_path "$TARGET_DEVICE" "$LAST_PART_NUM")
+    
+    # Wait for partition to appear
+    if ! wait_for_partition "$PACKAGES_PART"; then
         exit 1
     fi
     
     # Format partition as ext4 with fixed label
     echo "Formatting packages partition..."
-    if ! mkfs.ext4 -L "RESCARCH_PACKAGES" "$PACKAGES_PART"; then
+    if ! mkfs.ext4 -F -L "RESCARCH_PACKAGE" "$PACKAGES_PART"; then
         print_error "Failed to format packages partition"
         exit 1
     fi
@@ -566,11 +799,21 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     fi
     
     echo "Copying packages to partition..."
-    if ! cp -r "$TEMP_PACKAGES"/* "$TEMP_MOUNT/"; then
-        print_error "Failed to copy packages"
-        umount "$TEMP_MOUNT"
-        rmdir "$TEMP_MOUNT"
-        exit 1
+    # Use rsync for progress display if available, otherwise use cp
+    if command -v rsync &>/dev/null; then
+        if ! rsync -ah --info=progress2 --no-i-r "$TEMP_PACKAGES"/ "$TEMP_MOUNT"/; then
+            print_error "Failed to copy packages"
+            umount "$TEMP_MOUNT"
+            rmdir "$TEMP_MOUNT"
+            exit 1
+        fi
+    else
+        if ! cp -r "$TEMP_PACKAGES"/* "$TEMP_MOUNT"/; then
+            print_error "Failed to copy packages"
+            umount "$TEMP_MOUNT"
+            rmdir "$TEMP_MOUNT"
+            exit 1
+        fi
     fi
     
     sync
@@ -582,64 +825,64 @@ fi
 
 # Create persistent storage partition if requested
 if [[ "$CREATE_PERSISTENT" == true ]]; then
-    echo
-    echo "Creating persistent storage partition..."
+    print_step "Creating persistent storage partition"
     
     # Refresh partition table
-    partprobe "$TARGET_DEVICE" 2>/dev/null || true
-    sleep 2
+    refresh_partitions "$TARGET_DEVICE"
     
-    # Determine partition number (3 or 4 depending on offline packages)
-    if [[ "$CREATE_OFFLINE" == true ]]; then
-        PERSIST_NUM=4
-    else
-        PERSIST_NUM=3
+    # Detect partition table type
+    PART_TABLE_TYPE=$(get_partition_table_type "$TARGET_DEVICE")
+    
+    if [[ "$PART_TABLE_TYPE" == "unknown" ]]; then
+        print_error "Could not determine partition table type"
+        blkid -p "$TARGET_DEVICE" || true
+        exit 1
     fi
     
-    # Create partition with specified size or use all remaining space
+    # Get current highest partition number to know what the new one will be
+    CURRENT_LAST=$(get_last_partition_number "$TARGET_DEVICE" "$PART_TABLE_TYPE")
+    NEW_PART_NUM=$((CURRENT_LAST + 1))
+    
+    # Determine size (0 means use all remaining space)
+    PERSIST_SIZE_MB=0
     if [[ -n "$PERSISTENT_SIZE" ]]; then
-        SIZE_MB=$((PERSISTENT_SIZE_BYTES / 1024 / 1024))
-        echo "Creating persistent partition ($PERSISTENT_SIZE_HUMAN)..."
-        if ! sgdisk -n 0:0:+${SIZE_MB}M -t 0:8300 "$TARGET_DEVICE"; then
-            print_error "Failed to create persistent partition"
-            exit 1
-        fi
+        PERSIST_SIZE_MB=$((PERSISTENT_SIZE_BYTES / 1024 / 1024))
+        echo "Creating persistent partition $NEW_PART_NUM ($PERSISTENT_SIZE_HUMAN)..."
     else
-        # Use all remaining space
-        echo "Creating persistent partition with all remaining space..."
-        if ! sgdisk -n 0:0:0 -t 0:8300 "$TARGET_DEVICE"; then
-            print_error "Failed to create persistent partition"
-            exit 1
-        fi
+        echo "Creating persistent partition $NEW_PART_NUM with all remaining space..."
     fi
     
-    # Refresh partition table
-    partprobe "$TARGET_DEVICE" 2>/dev/null || true
-    sleep 2
-    
-    # Determine partition name
-    if [[ "$TARGET_DEVICE" =~ nvme || "$TARGET_DEVICE" =~ mmcblk ]]; then
-        PERSIST_PART="${TARGET_DEVICE}p${PERSIST_NUM}"
-    else
-        PERSIST_PART="${TARGET_DEVICE}${PERSIST_NUM}"
+    # Create partition
+    if ! create_partition "$TARGET_DEVICE" "$PERSIST_SIZE_MB" "$PART_TABLE_TYPE"; then
+        print_error "Failed to create persistent partition"
+        if [[ "$PART_TABLE_TYPE" == "dos" ]] || [[ "$PART_TABLE_TYPE" == "msdos" ]]; then
+            parted -s "$TARGET_DEVICE" print || true
+        else
+            sgdisk -p "$TARGET_DEVICE" || true
+        fi
+        exit 1
     fi
+    
+    # Refresh partition table again
+    refresh_partitions "$TARGET_DEVICE"
+    
+    # Get the new partition path using the number we calculated
+    LAST_PART_NUM=$NEW_PART_NUM
+    if [[ -z "$LAST_PART_NUM" ]]; then
+        print_error "Could not determine partition number"
+        exit 1
+    fi
+    
+    PERSIST_PART=$(get_partition_path "$TARGET_DEVICE" "$LAST_PART_NUM")
     
     # Wait for partition to appear
-    for i in {1..10}; do
-        if [[ -b "$PERSIST_PART" ]]; then
-            break
-        fi
-        sleep 1
-    done
-    
-    if [[ ! -b "$PERSIST_PART" ]]; then
-        print_error "Persistent partition $PERSIST_PART was not created"
+    if ! wait_for_partition "$PERSIST_PART"; then
         exit 1
     fi
     
     # Format partition as ext4
     echo "Formatting persistent partition as ext4..."
-    if ! mkfs.ext4 -L "RESCARCH_DATA" "$PERSIST_PART"; then
+    if ! mkfs.ext4 -F -L "RESCARCH_DATA" "$PERSIST_PART"; then
         print_error "Failed to format persistent partition"
         exit 1
     fi
@@ -648,4 +891,23 @@ if [[ "$CREATE_PERSISTENT" == true ]]; then
 fi
 
 sync
-print_success "ISO successfully written to $TARGET_DEVICE"
+
+echo
+echo "════════════════════════════════════════════════════════════"
+print_success "USB drive created successfully!"
+echo "════════════════════════════════════════════════════════════"
+echo
+echo "Summary:"
+echo "  ✓ Device: $TARGET_DEVICE"
+echo "  ✓ ISO Label: $ISO_LABEL"
+if [[ "$CREATE_OFFLINE" == true ]]; then
+    echo "  ✓ Offline Packages: $PACKAGES_PART ($PKG_COUNT packages, $PACKAGES_SIZE_HUMAN)"
+fi
+if [[ "$CREATE_PERSISTENT" == true ]]; then
+    PERSIST_SIZE=$(lsblk -b -n -o SIZE "$PERSIST_PART" 2>/dev/null || echo "0")
+    PERSIST_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$PERSIST_SIZE" 2>/dev/null || echo "Unknown")
+    echo "  ✓ Persistent Storage: $PERSIST_PART ($PERSIST_SIZE_HUMAN)"
+fi
+echo
+echo "Your RescArch USB drive is ready to use!"
+echo

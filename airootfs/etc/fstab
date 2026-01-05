@@ -3,4 +3,4 @@
 # <file system>                      <mount point>                  <type>  <options>              <dump> <pass>
 
 # RescArch offline package repository (optional)
-LABEL=RESCARCH_PACKAGES              /var/cache/rescarch_packages   ext4    ro,nofail,x-systemd.device-timeout=2   0   0
+LABEL=RESCARCH_PACKAGE              /var/cache/rescarch_packages   ext4    ro,nofail,x-systemd.device-timeout=2   0   0

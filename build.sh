@@ -5,7 +5,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-mkdir -p out/repo out/packages
+mkdir -p out/repo
 
 prepare(){
     echo "==> Fixing permissions"
@@ -30,7 +30,6 @@ declare -A boot_vars=(
 )
 declare -A pacman_vars=(
   ["RA_REPOSITORY"]="file://$(realpath out/repo)"
-  ["RA_PACKAGE_CACHE"]="$(realpath out/packages)"
 )
 
 # Substitute boot variables in files ending with .ra_boot

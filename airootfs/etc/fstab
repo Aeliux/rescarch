@@ -1,6 +1,0 @@
-# /etc/fstab: static file system information
-#
-# <file system>                      <mount point>                  <type>  <options>              <dump> <pass>
-
-# RescArch offline package repository (optional, EROFS)
-LABEL=RA_PACKAGES /var/cache/rescarch_packages erofs ro,nofail,x-systemd.device-timeout=5 0 0

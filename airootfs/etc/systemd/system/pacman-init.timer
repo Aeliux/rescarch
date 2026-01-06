@@ -1,0 +1,15 @@
+[Unit]
+Description=Delayed Pacman keyring initialization timer
+Documentation=man:systemd.timer(5)
+Requires=etc-pacman.d-gnupg.mount
+After=etc-pacman.d-gnupg.mount
+Wants=var-cache-rescarch_packages.mount
+After=var-cache-rescarch_packages.mount
+ConditionPathIsMountPoint=/var/cache/rescarch_packages
+
+[Timer]
+OnBootSec=10s
+Unit=pacman-init.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=RescArch Offline Package Repository Mount
+Documentation=man:systemd.mount(5)
+# Optional mount - don't fail boot if not available
+FailureAction=none
+# Require gnupg mount for package verification
+Wants=etc-pacman.d-gnupg.mount
+After=etc-pacman.d-gnupg.mount
+
+[Mount]
+What=LABEL=RA_PACKAGES
+Where=/var/cache/rescarch_packages
+Type=erofs
+Options=ro,nofail
+TimeoutStartSec=5
+
+[Install]
+WantedBy=multi-user.target

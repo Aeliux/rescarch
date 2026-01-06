@@ -341,21 +341,25 @@ get_partition_path() {
     local device="$1"
     local part_num="$2"
     
-    # Check if partitions use 'p' separator by looking at sysfs
-    local device_name=$(basename "$device")
-    if [[ -e "/sys/block/${device_name}/${device_name}p${part_num}" ]]; then
-        # Device uses 'p' separator (nvme, mmcblk, loop, etc.)
+    # Method 1: Try with 'p' separator (nvme, mmcblk, loop, etc.)
+    local part_path="${device}p${part_num}"
+    if [[ -b "$part_path" ]]; then
+        echo "$part_path"
+        return 0
+    fi
+    
+    # Method 2: Try without separator (sd*, vd*, etc.)
+    part_path="${device}${part_num}"
+    if [[ -b "$part_path" ]]; then
+        echo "$part_path"
+        return 0
+    fi
+    
+    # Method 3: Fallback - return best guess based on device name
+    if [[ "$device" =~ [0-9]$ ]] || [[ "$device" =~ (nvme|mmcblk|loop) ]]; then
         echo "${device}p${part_num}"
-    elif [[ -e "/sys/block/${device_name}/${device_name}${part_num}" ]]; then
-        # Device uses no separator (sd*, vd*, etc.)
-        echo "${device}${part_num}"
     else
-        # Fallback: check if device name ends with a digit
-        if [[ "$device" =~ [0-9]$ ]]; then
-            echo "${device}p${part_num}"
-        else
-            echo "${device}${part_num}"
-        fi
+        echo "${device}${part_num}"
     fi
 }
 
@@ -625,9 +629,10 @@ if [[ ! -b "$TARGET_DEVICE" ]]; then
     exit 1
 fi
 
-# Check if device appears to be a partition (has PKNAME)
-DEVICE_PARENT=$(lsblk -no PKNAME "$TARGET_DEVICE" 2>/dev/null || echo "")
-if [[ -n "$DEVICE_PARENT" ]]; then
+# Check if device is a partition by checking its TYPE (should be disk or loop, not part)
+DEVICE_TYPE=$(lsblk -no TYPE "$TARGET_DEVICE" 2>/dev/null | head -1)
+if [[ "$DEVICE_TYPE" == "part" ]]; then
+    DEVICE_PARENT=$(lsblk -no PKNAME "$TARGET_DEVICE" 2>/dev/null | head -1)
     print_error "Target appears to be a partition, not a disk: $TARGET_DEVICE"
     print_error "Parent device: /dev/$DEVICE_PARENT"
     print_error "Please use the whole disk device instead"
@@ -1022,12 +1027,11 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     
     # Set permissions on package directory to 444 (world-readable) with root:root ownership
     print_substep "Setting permissions on package files"
-    print_info "Setting ownership to root:root and permissions to 444"
-    if ! sudo chown -R root:root "$TEMP_PACKAGES"; then
+    if ! chown -R root:root "$TEMP_PACKAGES"; then
         print_error "Failed to set ownership on package directory"
         exit 1
     fi
-    if ! sudo chmod -R 444 "$TEMP_PACKAGES"; then
+    if ! chmod -R 755 "$TEMP_PACKAGES"; then
         print_error "Failed to set permissions on package directory"
         exit 1
     fi

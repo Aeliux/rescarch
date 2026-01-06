@@ -1173,7 +1173,7 @@ if [[ "$CREATE_PERSISTENT" == true ]]; then
     print_substep "Formatting as ext4"
     print_info "Creating ext4 filesystem on $PERSIST_PART"
     # Format partition as ext4
-    if ! mkfs.ext4 -q -F -L "RESCARCH_DATA" "$PERSIST_PART"; then
+    if ! mkfs.ext4 -q -F -L "RA_DATA" "$PERSIST_PART"; then
         print_error "Failed to format persistent partition"
         exit 1
     fi

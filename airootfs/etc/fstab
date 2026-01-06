@@ -2,5 +2,5 @@
 #
 # <file system>                      <mount point>                  <type>  <options>              <dump> <pass>
 
-# RescArch offline package repository (optional, EROFS compressed)
-LABEL=RA_PACKAGES                   /var/cache/rescarch_packages   erofs   ro,nofail,x-systemd.device-timeout=2   0   0
+# RescArch offline package repository (optional, EROFS)
+LABEL=RA_PACKAGES /var/cache/rescarch_packages erofs ro,nofail,x-systemd.device-timeout=5 0 0

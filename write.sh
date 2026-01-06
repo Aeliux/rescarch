@@ -873,7 +873,7 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     cd "$TEMP_PACKAGES"
     
     # Use explicit extensions to exclude .sig files
-    if ! repo-add rescarch.db.tar.gz *.pkg.tar.*[^.sig] 2>/dev/null; then
+    if ! repo-add rescarch-offline.db.tar.gz *.pkg.tar.*[^.sig] 2>/dev/null; then
         print_error "Failed to create package database"
         cd - > /dev/null
         exit 1
@@ -884,6 +884,13 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     PACKAGES_SIZE=$(du -sb "$TEMP_PACKAGES" | awk '{print $1}')
     PACKAGES_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$PACKAGES_SIZE")
     
+    # Write pacman repository configuration file
+    REPO_CONF_PATH="$TEMP_PACKAGES/repositories.conf"
+    cat > "$REPO_CONF_PATH" << EOF
+[rescarch-offline]
+Server = file:///var/rescarch/packages
+EOF
+
     print_success "Prepared $PKG_COUNT signed packages ($PACKAGES_SIZE_HUMAN)"
 fi
 

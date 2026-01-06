@@ -9,7 +9,7 @@ After=etc-pacman.d-gnupg.mount
 
 [Mount]
 What=LABEL=RA_PACKAGES
-Where=/var/cache/rescarch_packages
+Where=/var/rescarch/packages
 Type=erofs
 Options=ro,nofail
 TimeoutStartSec=5

@@ -2,8 +2,8 @@
 Description=Initialize Pacman keyring
 Requires=etc-pacman.d-gnupg.mount
 After=etc-pacman.d-gnupg.mount
-Wants=var-cache-rescarch_packages.mount
-After=var-cache-rescarch_packages.mount
+Wants=var-rescarch-packages.mount
+After=var-rescarch-packages.mount
 Before=archlinux-keyring-wkd-sync.service
 
 [Service]

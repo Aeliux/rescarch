@@ -1018,17 +1018,28 @@ print_success "ISO written and synced successfully"
 # Create offline package repository if requested
 if [[ "$CREATE_OFFLINE" == true ]]; then
     print_step "Creating offline package partition"
-    TOTAL_SUBSTEPS=5
+    TOTAL_SUBSTEPS=6
     
-    # Create EROFS image with highest compression (lzma) and dedupe for minimal size
-    print_substep "Creating EROFS image with LZMA compression"
+    # Set permissions on package directory to 444 (world-readable) with root:root ownership
+    print_substep "Setting permissions on package files"
+    print_info "Setting ownership to root:root and permissions to 444"
+    if ! sudo chown -R root:root "$TEMP_PACKAGES"; then
+        print_error "Failed to set ownership on package directory"
+        exit 1
+    fi
+    if ! sudo chmod -R 444 "$TEMP_PACKAGES"; then
+        print_error "Failed to set permissions on package directory"
+        exit 1
+    fi
+    
+    # Create EROFS image without compression (data is already compressed)
+    print_substep "Creating EROFS image (uncompressed)"
     EROFS_IMAGE=$(mktemp -u).erofs
     register_file "$EROFS_IMAGE"
-    # -zlzma: use LZMA compression (highest compression)
     # -L: set volume label
     # --all-root: make all files owned by root
     # -T0: set all timestamps to 0 for reproducibility
-    if ! mkfs.erofs -zlzma -L "RA_PACKAGES" --all-root -T0 "$EROFS_IMAGE" "$TEMP_PACKAGES"; then
+    if ! mkfs.erofs -L "RA_PACKAGES" --all-root -T0 "$EROFS_IMAGE" "$TEMP_PACKAGES"; then
         print_error "Failed to create EROFS image"
         exit 1
     fi

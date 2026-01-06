@@ -341,10 +341,21 @@ get_partition_path() {
     local device="$1"
     local part_num="$2"
     
-    if [[ "$device" =~ nvme || "$device" =~ mmcblk ]]; then
+    # Check if partitions use 'p' separator by looking at sysfs
+    local device_name=$(basename "$device")
+    if [[ -e "/sys/block/${device_name}/${device_name}p${part_num}" ]]; then
+        # Device uses 'p' separator (nvme, mmcblk, loop, etc.)
         echo "${device}p${part_num}"
-    else
+    elif [[ -e "/sys/block/${device_name}/${device_name}${part_num}" ]]; then
+        # Device uses no separator (sd*, vd*, etc.)
         echo "${device}${part_num}"
+    else
+        # Fallback: check if device name ends with a digit
+        if [[ "$device" =~ [0-9]$ ]]; then
+            echo "${device}p${part_num}"
+        else
+            echo "${device}${part_num}"
+        fi
     fi
 }
 
@@ -424,7 +435,7 @@ Burns an RescArch ISO image to a block device.
 
 OPTIONS:
     -i, --iso PATH          Path to RescArch ISO file (required)
-    -d, --device DEVICE     Target device path, e.g., /dev/sdb (required)
+    -d, --device DEVICE     Target block device (required, must be whole disk)
     -p, --persistent [SIZE] Create persistent storage partition
                             SIZE is optional (e.g., 1G, 500M, 2T)
                             If omitted, uses all remaining space
@@ -438,22 +449,22 @@ OPTIONS:
 
 EXAMPLES:
     # Burn ISO with interactive confirmation
-    $(basename "$0") -i rescarch.iso -d /dev/sdb
+    $(basename "$0") -i rescarch.iso -d /dev/sdX
 
     # Burn ISO with 2GB persistent storage
-    $(basename "$0") -i rescarch.iso -d /dev/sdb -p 2G
+    $(basename "$0") -i rescarch.iso -d /dev/sdX -p 2G
 
     # Burn ISO with persistent storage using all remaining space
-    $(basename "$0") -i rescarch.iso -d /dev/sdb -p
+    $(basename "$0") -i rescarch.iso -d /dev/sdX -p
 
     # Burn ISO with offline packages and persistent storage
-    $(basename "$0") -i rescarch.iso -d /dev/sdb -o base,linux,linux-firmware -p 1G
+    $(basename "$0") -i rescarch.iso -d /dev/sdX -o base,linux,linux-firmware -p 1G
 
     # Burn ISO with full system packages
-    $(basename "$0") -i rescarch.iso -d /dev/sdb -o base,linux,plasma,firefox
+    $(basename "$0") -i rescarch.iso -d /dev/sdX -o base,linux,plasma,firefox
 
     # Skip confirmations (use with extreme caution)
-    $(basename "$0") -i rescarch.iso -d /dev/sdb -y
+    $(basename "$0") -i rescarch.iso -d /dev/sdX -y
 
 WARNING:
     This script will PERMANENTLY ERASE all data on the target device.
@@ -599,24 +610,27 @@ if [[ -z "$TARGET_DEVICE" ]]; then
     exit 1
 fi
 
-# Normalize device path (remove trailing slashes and partition numbers if accidentally included)
+# Normalize device path (remove trailing slashes)
 TARGET_DEVICE=$(echo "$TARGET_DEVICE" | sed 's:/*$::')
 
-if [[ ! "$TARGET_DEVICE" =~ ^/dev/[a-z]+ ]]; then
-    print_error "Invalid device path format: $TARGET_DEVICE"
-    print_error "Expected format: /dev/sdX or /dev/nvmeXnY"
-    exit 1
-fi
-
-if [[ "$TARGET_DEVICE" =~ [0-9]$ ]] && [[ ! "$TARGET_DEVICE" =~ nvme[0-9]+n[0-9]+$ ]]; then
-    print_error "Device path should not include partition number: $TARGET_DEVICE"
-    print_error "Use the disk device (e.g., /dev/sdb, not /dev/sdb1)"
+# Check if path exists and is a block device
+if [[ ! -e "$TARGET_DEVICE" ]]; then
+    print_error "Device does not exist: $TARGET_DEVICE"
     exit 1
 fi
 
 if [[ ! -b "$TARGET_DEVICE" ]]; then
     print_error "Invalid block device: $TARGET_DEVICE"
-    print_error "Device does not exist or is not a block device"
+    print_error "Device is not a block device"
+    exit 1
+fi
+
+# Check if device appears to be a partition (has PKNAME)
+DEVICE_PARENT=$(lsblk -no PKNAME "$TARGET_DEVICE" 2>/dev/null || echo "")
+if [[ -n "$DEVICE_PARENT" ]]; then
+    print_error "Target appears to be a partition, not a disk: $TARGET_DEVICE"
+    print_error "Parent device: /dev/$DEVICE_PARENT"
+    print_error "Please use the whole disk device instead"
     exit 1
 fi
 
@@ -643,13 +657,87 @@ fi
 # Gather information
 print_substep "Gathering device and ISO information"
 ISO_LABEL=$(get_iso_label "$ISO_PATH")
+
+# Gather comprehensive device information
+DEVICE_NAME=$(basename "$TARGET_DEVICE")
 DEVICE_SIZE=$(lsblk -b -d -n -o SIZE "$TARGET_DEVICE" 2>/dev/null || echo "0")
-DEVICE_MODEL=$(lsblk -d -n -o MODEL "$TARGET_DEVICE" 2>/dev/null || echo "Unknown")
-DEVICE_TRAN=$(lsblk -d -n -o TRAN "$TARGET_DEVICE" 2>/dev/null || echo "Unknown")
-DEVICE_TYPE=$(lsblk -d -n -o TYPE "$TARGET_DEVICE" 2>/dev/null || echo "Unknown")
+DEVICE_MODEL=$(lsblk -d -n -o MODEL "$TARGET_DEVICE" 2>/dev/null | tr -s ' ' || echo "")
+DEVICE_VENDOR=$(lsblk -d -n -o VENDOR "$TARGET_DEVICE" 2>/dev/null | tr -s ' ' || echo "")
+DEVICE_TRAN=$(lsblk -d -n -o TRAN "$TARGET_DEVICE" 2>/dev/null || echo "")
+DEVICE_TYPE=$(lsblk -d -n -o TYPE "$TARGET_DEVICE" 2>/dev/null || echo "disk")
+DEVICE_ROTA=$(lsblk -d -n -o ROTA "$TARGET_DEVICE" 2>/dev/null || echo "")
 DEVICE_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$DEVICE_SIZE" 2>/dev/null || echo "$DEVICE_SIZE bytes")
-IS_REMOVABLE=$(cat "/sys/block/$(basename "$TARGET_DEVICE")/removable" 2>/dev/null || echo "0")
-print_info "Device: $TARGET_DEVICE ($DEVICE_SIZE_HUMAN, $DEVICE_MODEL)"
+IS_REMOVABLE=$(cat "/sys/block/${DEVICE_NAME}/removable" 2>/dev/null || echo "0")
+
+# Detect device category and gather specific info
+DEVICE_CATEGORY=""
+DEVICE_INFO_EXTRA=""
+
+if [[ "$DEVICE_NAME" =~ ^loop[0-9]+ ]]; then
+    DEVICE_CATEGORY="Loop Device"
+    BACKING_FILE=$(losetup -n -O BACK-FILE "$TARGET_DEVICE" 2>/dev/null || echo "")
+    [[ -n "$BACKING_FILE" ]] && DEVICE_INFO_EXTRA="Backing: $BACKING_FILE"
+    
+elif [[ "$DEVICE_NAME" =~ ^ram[0-9]+|^brd[0-9]+ ]]; then
+    DEVICE_CATEGORY="RAM Block Device"
+    DEVICE_INFO_EXTRA="Volatile storage (data lost on reboot)"
+    
+elif [[ "$DEVICE_NAME" =~ ^nvme[0-9]+n[0-9]+ ]]; then
+    DEVICE_CATEGORY="NVMe SSD"
+    NVME_MODEL=$(cat "/sys/block/${DEVICE_NAME}/device/model" 2>/dev/null | tr -s ' ' || echo "")
+    [[ -n "$NVME_MODEL" ]] && DEVICE_INFO_EXTRA="Model: $NVME_MODEL"
+    
+elif [[ "$DEVICE_NAME" =~ ^mmcblk[0-9]+ ]]; then
+    DEVICE_CATEGORY="MMC/SD Card"
+    MMC_TYPE=$(cat "/sys/block/${DEVICE_NAME}/device/type" 2>/dev/null || echo "")
+    MMC_NAME=$(cat "/sys/block/${DEVICE_NAME}/device/name" 2>/dev/null || echo "")
+    [[ -n "$MMC_NAME" ]] && DEVICE_INFO_EXTRA="Name: $MMC_NAME"
+    [[ -n "$MMC_TYPE" ]] && DEVICE_INFO_EXTRA="${DEVICE_INFO_EXTRA:+$DEVICE_INFO_EXTRA, }Type: $MMC_TYPE"
+    
+elif [[ "$DEVICE_NAME" =~ ^sd[a-z]+ ]]; then
+    if [[ "$DEVICE_ROTA" == "0" ]]; then
+        DEVICE_CATEGORY="SATA/SAS SSD"
+    else
+        DEVICE_CATEGORY="SATA/SAS HDD"
+    fi
+    [[ "$IS_REMOVABLE" == "1" ]] && DEVICE_CATEGORY="USB/Removable Drive"
+    
+elif [[ "$DEVICE_NAME" =~ ^vd[a-z]+ ]]; then
+    DEVICE_CATEGORY="Virtual Disk"
+    DEVICE_INFO_EXTRA="Virtualized block device"
+    
+elif [[ "$DEVICE_NAME" =~ ^xvd[a-z]+ ]]; then
+    DEVICE_CATEGORY="Xen Virtual Disk"
+    DEVICE_INFO_EXTRA="Xen paravirtualized device"
+    
+elif [[ "$DEVICE_NAME" =~ ^hd[a-z]+ ]]; then
+    DEVICE_CATEGORY="IDE/PATA Drive"
+    
+elif [[ "$DEVICE_NAME" =~ ^sr[0-9]+ ]]; then
+    DEVICE_CATEGORY="Optical Drive"
+    DEVICE_INFO_EXTRA="Warning: Optical drives are not recommended"
+    
+elif [[ "$DEVICE_NAME" =~ ^nbd[0-9]+ ]]; then
+    DEVICE_CATEGORY="Network Block Device"
+    DEVICE_INFO_EXTRA="Remote network storage"
+    
+elif [[ "$DEVICE_NAME" =~ ^rbd[0-9]+ ]]; then
+    DEVICE_CATEGORY="Ceph RBD"
+    DEVICE_INFO_EXTRA="Ceph distributed storage"
+    
+else
+    DEVICE_CATEGORY="Block Device"
+    DEVICE_INFO_EXTRA="Generic block device (kernel supported)"
+fi
+
+# Build device description
+DEVICE_DESC="$DEVICE_CATEGORY"
+[[ "$DEVICE_ROTA" == "0" ]] && [[ "$DEVICE_CATEGORY" =~ ^(Block Device|Virtual Disk) ]] && DEVICE_DESC="$DEVICE_DESC (SSD)"
+
+print_info "Device: $TARGET_DEVICE ($DEVICE_SIZE_HUMAN) - $DEVICE_DESC"
+[[ -n "$DEVICE_VENDOR$DEVICE_MODEL" ]] && print_info "Hardware: ${DEVICE_VENDOR:+$DEVICE_VENDOR }${DEVICE_MODEL}"
+[[ -n "$DEVICE_TRAN" ]] && [[ "$DEVICE_TRAN" != "Unknown" ]] && print_info "Transport: $DEVICE_TRAN"
+[[ -n "$DEVICE_INFO_EXTRA" ]] && print_info "$DEVICE_INFO_EXTRA"
 
 print_success "All validation checks passed"
 
@@ -820,10 +908,17 @@ echo "Size: $ISO_SIZE_HUMAN"
 echo
 echo ":: Target Device"
 echo "Device: $TARGET_DEVICE"
+echo "Type: $DEVICE_DESC"
+if [[ -n "$DEVICE_VENDOR$DEVICE_MODEL" ]]; then
+    echo "Hardware: ${DEVICE_VENDOR:+$DEVICE_VENDOR }${DEVICE_MODEL}"
+fi
 echo "Size: $DEVICE_SIZE_HUMAN"
-echo "Model: $DEVICE_MODEL"
-echo "Transport: $DEVICE_TRAN"
-echo "Type: $DEVICE_TYPE"
+if [[ -n "$DEVICE_TRAN" ]] && [[ "$DEVICE_TRAN" != "Unknown" ]]; then
+    echo "Transport: $DEVICE_TRAN"
+fi
+if [[ -n "$DEVICE_INFO_EXTRA" ]]; then
+    echo "Info: $DEVICE_INFO_EXTRA"
+fi
 echo
 echo ":: Configuration"
 if [[ "$CREATE_OFFLINE" == true ]]; then

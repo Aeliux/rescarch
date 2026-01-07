@@ -31,7 +31,6 @@ prepare(){
     # Remove artifacts
     echo "==> Cleaning up artifacts"
     for artifact in "${artifacts[@]}"; do
-        echo "  - Removing $artifact"
         rm -f "$artifact"
     done
 }
@@ -89,7 +88,7 @@ for pkgbuild in src/*/PKGBUILD; do
 done
 
 # Create repo database
-repo-add out/packages/rescarch.db.tar.zst out/packages/*.pkg.tar.zst
+repo-add -q out/packages/rescarch.db.tar.zst out/packages/*.pkg.tar.zst
 if [ "$DEBUG" = true ]; then
   export RA_DEBUG=true
 fi

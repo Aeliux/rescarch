@@ -80,6 +80,8 @@ cleanup_mount() {
 }
 
 cleanup_all() {
+    local show_messages="${1:-true}"
+    
     # Prevent recursive cleanup calls
     if [[ "$CLEANUP_IN_PROGRESS" == "true" ]]; then
         return
@@ -87,15 +89,17 @@ cleanup_all() {
     CLEANUP_IN_PROGRESS=true
     
     if [[ ${#CLEANUP_MOUNTS[@]} -gt 0 ]] || [[ ${#CLEANUP_DIRS[@]} -gt 0 ]] || [[ ${#CLEANUP_FILES[@]} -gt 0 ]]; then
-        echo
-        echo -e "\033[0;33m═══ Cleanup ═══\033[0m"
+        if [[ "$show_messages" == "true" ]]; then
+            echo
+            echo -e "\033[0;33m═══ Cleanup ═══\033[0m"
+        fi
     fi
     
     # Unmount in reverse order
     for ((i=${#CLEANUP_MOUNTS[@]}-1; i>=0; i--)); do
         local mount_point="${CLEANUP_MOUNTS[i]}"
         if [[ -n "$mount_point" ]] && mountpoint -q "$mount_point" 2>/dev/null; then
-            echo -e "\033[0;33m  Unmounting: $mount_point\033[0m"
+            [[ "$show_messages" == "true" ]] && echo -e "\033[0;33m  Unmounting: $mount_point\033[0m"
             cleanup_mount "$mount_point"
         fi
     done
@@ -103,7 +107,7 @@ cleanup_all() {
     # Remove files
     for file in "${CLEANUP_FILES[@]}"; do
         if [[ -n "$file" ]] && [[ -f "$file" ]]; then
-            echo -e "\033[0;33m  Removing file: $file\033[0m"
+            [[ "$show_messages" == "true" ]] && echo -e "\033[0;33m  Removing file: $file\033[0m"
             rm -f "$file" 2>/dev/null || true
         fi
     done
@@ -112,7 +116,7 @@ cleanup_all() {
     for ((i=${#CLEANUP_DIRS[@]}-1; i>=0; i--)); do
         local dir="${CLEANUP_DIRS[i]}"
         if [[ -n "$dir" ]] && [[ -d "$dir" ]]; then
-            echo -e "\033[0;33m  Removing directory: $dir\033[0m"
+            [[ "$show_messages" == "true" ]] && echo -e "\033[0;33m  Removing directory: $dir\033[0m"
             rm -rf "$dir" 2>/dev/null || true
         fi
     done
@@ -170,14 +174,16 @@ trap_exit() {
     if [[ $exit_code -ne 0 ]] && [[ "$CLEANUP_IN_PROGRESS" == "false" ]]; then
         echo
         print_error "Script exited with error code: $exit_code"
+        cleanup_all true  # Show cleanup messages on error
+    else
+        cleanup_all false  # Hide cleanup messages on normal exit
     fi
-    cleanup_all
 }
 
 trap_int() {
     echo
     print_warning "Interrupted by user (Ctrl+C)"
-    cleanup_all
+    cleanup_all true  # Show cleanup messages on interruption
     exit 130
 }
 
@@ -405,11 +411,11 @@ create_partition() {
         
         if [[ -z "$size_mb" ]] || [[ "$size_mb" -eq 0 ]]; then
             # Use all remaining space - empty size field means use all
-            echo "${start_sector},,83" | sfdisk --append --no-reread --force "$device" 2>&1 | grep -vE "(iso9660|wipefs|Checking that|recommended)" || result=$?
+            echo "${start_sector},,83" | sfdisk -q --append --no-reread --force "$device" 2>&1 | grep -vE "(iso9660|wipefs|Checking that|recommended)" || result=$?
         else
             # Use specified size - convert MB to sectors (MB * 1024 * 1024 / 512)
             local size_sectors=$((size_mb * 2048))
-            echo "${start_sector},${size_sectors},83" | sfdisk --append --no-reread --force "$device" 2>&1 | grep -vE "(iso9660|wipefs|Checking that|recommended)" || result=$?
+            echo "${start_sector},${size_sectors},83" | sfdisk -q --append --no-reread --force "$device" 2>&1 | grep -vE "(iso9660|wipefs|Checking that|recommended)" || result=$?
         fi
         
     elif [[ "$pttype" == "gpt" ]]; then
@@ -873,7 +879,7 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     cd "$TEMP_PACKAGES"
     
     # Use explicit extensions to exclude .sig files
-    if ! repo-add rescarch-offline.db.tar.gz *.pkg.tar.*[^.sig] 2>/dev/null; then
+    if ! repo-add -q rescarch-offline.db.tar.gz *.pkg.tar.*[^.sig] 2>/dev/null; then
         print_error "Failed to create package database"
         cd - > /dev/null
         exit 1
@@ -950,16 +956,20 @@ fi
 echo "========================================"
 echo
 
-# Check if device is removable
+# Check if device is removable (skip check for virtual/loop/ram devices)
 if [[ "$IS_REMOVABLE" != "1" ]] && [[ "$DEVICE_TRAN" != "usb" ]]; then
-    print_warning "This device does NOT appear to be a removable USB device!"
-    print_warning "Transport type: $DEVICE_TRAN, Removable: $IS_REMOVABLE"
-    
-    echo
-    read -p "Are you SURE you want to continue? (type 'YES' in capitals): " CONFIRM
-    if [[ "$CONFIRM" != "YES" ]]; then
-        echo "Operation cancelled."
-        exit 2
+    # Skip warning for virtual and non-physical devices
+    if [[ ! "$DEVICE_NAME" =~ ^(loop|ram|brd|nbd|rbd|vd|xvd)[0-9]+ ]]; then
+        print_warning "This device does NOT appear to be a removable drive!"
+        print_warning "Transport type: $DEVICE_TRAN, Removable: $IS_REMOVABLE"
+        print_warning "This may be an internal drive - proceed with extreme caution!"
+        
+        echo
+        read -p "Are you SURE you want to continue? (type 'YES' in capitals): " CONFIRM
+        if [[ "$CONFIRM" != "YES" ]]; then
+            echo "Operation cancelled."
+            exit 2
+        fi
     fi
 fi
 
@@ -1206,21 +1216,4 @@ fi
 sync
 
 echo
-echo "════════════════════════════════════════════════════════════"
-print_success "USB drive created successfully!"
-echo "════════════════════════════════════════════════════════════"
-echo
-echo "Summary:"
-echo "  ✓ Device: $TARGET_DEVICE"
-echo "  ✓ ISO Label: $ISO_LABEL"
-if [[ "$CREATE_OFFLINE" == true ]]; then
-    echo "  ✓ Offline Packages: $PACKAGES_PART ($PKG_COUNT packages, $PACKAGES_SIZE_HUMAN)"
-fi
-if [[ "$CREATE_PERSISTENT" == true ]]; then
-    PERSIST_SIZE=$(lsblk -b -n -o SIZE "$PERSIST_PART" 2>/dev/null || echo "0")
-    PERSIST_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$PERSIST_SIZE" 2>/dev/null || echo "Unknown")
-    echo "  ✓ Persistent Storage: $PERSIST_PART ($PERSIST_SIZE_HUMAN)"
-fi
-echo
-echo "Your RescArch USB drive is ready to use!"
-echo
+print_success "Bootable drive created successfully!"

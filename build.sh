@@ -5,6 +5,23 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# Parse arguments
+DEBUG=false
+MKARCHISO_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --debug)
+      DEBUG=true
+      shift
+      ;;
+    *)
+      MKARCHISO_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
 mkdir -p out/repo
 
 prepare(){
@@ -71,5 +88,23 @@ done
 # Create repo database
 repo-add out/repo/rescarch.db.tar.zst out/repo/*.pkg.tar.zst
 
+if [ "$DEBUG" = true ]; then
+  export RA_DEBUG=true
+fi
+
+MKARCHISO_DEFAULT_ARGS=(
+  -r
+  -w /tmp/archiso-tmp-$$
+  -o out/
+)
+
+if [ "$DEBUG" = true ]; then
+  MKARCHISO_DEFAULT_ARGS+=(-v)
+fi
+
 echo "==> Building archiso"
-mkarchiso -v -r -w /tmp/archiso-tmp-$$ -o out/ .
+if [[ ${#MKARCHISO_ARGS[@]} -gt 0 ]]; then
+  mkarchiso "${MKARCHISO_DEFAULT_ARGS[@]}" "${MKARCHISO_ARGS[@]}" .
+else
+  mkarchiso "${MKARCHISO_DEFAULT_ARGS[@]}" .
+fi

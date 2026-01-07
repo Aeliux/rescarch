@@ -23,3 +23,9 @@ file_permissions=(
   ["/usr/local/bin/choose-mirror"]="0:0:755"
   ["/usr/local/bin/Installation_guide"]="0:0:755"
 )
+
+# Debug overrides
+if [ -n "${RA_DEBUG:-}" ] && [ "$RA_DEBUG" = true ]; then
+  iso_version="debug"
+  airootfs_image_tool_options=('-no-compression')
+fi

@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-mkdir -p out/repo
+mkdir -p out/packages
 
 prepare(){
     echo "==> Fixing permissions"
@@ -46,7 +46,7 @@ declare -A boot_vars=(
   ["RA_BOOT_CMDLINE"]="archisobasedir=%INSTALL_DIR% archisosearchuuid=%ARCHISO_UUID% cow_label=RA_DATA cow_nofail=y"
 )
 declare -A pacman_vars=(
-  ["RA_REPOSITORY"]="file://$(realpath out/repo)"
+  ["RA_REPOSITORY"]="file://$(realpath out/packages)"
 )
 
 # Substitute boot variables in files ending with .ra_boot
@@ -82,12 +82,11 @@ for pkgbuild in src/*/PKGBUILD; do
   pkgdir=$(dirname "$pkgbuild")
   echo "Building package in $pkgdir"
   # run as non root to avoid permission issues
-  sudo -u "$SUDO_USER" bash -c "cd '$pkgdir' && makepkg --noconfirm --syncdeps --cleanbuild --force && mv ./*.pkg.tar.zst ../../out/repo/"
+  sudo -u "$SUDO_USER" bash -c "cd '$pkgdir' && makepkg --noconfirm --syncdeps --cleanbuild --force && mv ./*.pkg.tar.zst ../../out/packages/"
 done
 
 # Create repo database
-repo-add out/repo/rescarch.db.tar.zst out/repo/*.pkg.tar.zst
-
+repo-add out/packages/rescarch.db.tar.zst out/packages/*.pkg.tar.zst
 if [ "$DEBUG" = true ]; then
   export RA_DEBUG=true
 fi

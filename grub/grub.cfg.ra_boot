@@ -37,26 +37,26 @@ else
 fi
 
 # Set default menu entry
-default=archlinux
+default=rescarch
 timeout=3
 timeout_style=menu
 
 
 # Menu entries
 
-menuentry "RescArch" --class arch --class gnu-linux --class gnu --class os --id 'archlinux' {
+menuentry "RescArch" --class arch --class gnu-linux --class gnu --class os --id 'rescarch' {
     set gfxpayload=keep
     linux /%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux %RA_BOOT_CMDLINE% %RA_BOOT_SPLASH%
     initrd /%INSTALL_DIR%/boot/%ARCH%/initramfs-linux.img
 }
 
-menuentry "RescArch with boot logs" --class arch --class gnu-linux --class gnu --class os --id 'archlinux' {
+menuentry "RescArch with boot logs" --class arch --class gnu-linux --class gnu --class os --id 'rescarch-verbose' {
     set gfxpayload=keep
     linux /%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux %RA_BOOT_CMDLINE%
     initrd /%INSTALL_DIR%/boot/%ARCH%/initramfs-linux.img
 }
 
-menuentry "RescArch fast boot" --class arch --class gnu-linux --class gnu --class os --id 'archlinux' {
+menuentry "RescArch fast boot" --class arch --class gnu-linux --class gnu --class os --id 'rescarch-fast' {
     set gfxpayload=keep
     linux /%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux %RA_BOOT_CMDLINE% copytoram=n
     initrd /%INSTALL_DIR%/boot/%ARCH%/initramfs-linux.img

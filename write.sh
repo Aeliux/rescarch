@@ -411,11 +411,11 @@ create_partition() {
         
         if [[ -z "$size_mb" ]] || [[ "$size_mb" -eq 0 ]]; then
             # Use all remaining space - empty size field means use all
-            echo "${start_sector},,83" | sfdisk -q --append --no-reread --force "$device" 2>&1 | grep -vE "(iso9660|wipefs|Checking that|recommended)" || result=$?
+            echo "${start_sector},,83" | sfdisk -q --append --no-reread --force "$device" 2>&1 || result=$?
         else
             # Use specified size - convert MB to sectors (MB * 1024 * 1024 / 512)
             local size_sectors=$((size_mb * 2048))
-            echo "${start_sector},${size_sectors},83" | sfdisk -q --append --no-reread --force "$device" 2>&1 | grep -vE "(iso9660|wipefs|Checking that|recommended)" || result=$?
+            echo "${start_sector},${size_sectors},83" | sfdisk -q --append --no-reread --force "$device" 2>&1 || result=$?
         fi
         
     elif [[ "$pttype" == "gpt" ]]; then
@@ -1007,8 +1007,8 @@ umount "${TARGET_DEVICE}"* 2>/dev/null || true
 sync
 
 print_substep "Removing partition table and signatures"
-if ! wipefs -a "$TARGET_DEVICE" 2>/dev/null; then
-    print_warning "wipefs not available, using fallback method"
+if ! wipefs -aq "$TARGET_DEVICE"; then
+    print_warning "wipefs failed, using fallback method"
     dd if=/dev/zero of="$TARGET_DEVICE" bs=1M count=10 status=none 2>/dev/null || true
 fi
 
@@ -1054,13 +1054,13 @@ if [[ "$CREATE_OFFLINE" == true ]]; then
     fi
     
     # Create EROFS image without compression (data is already compressed)
-    print_substep "Creating EROFS image (uncompressed)"
+    print_substep "Creating EROFS image"
     EROFS_IMAGE=$(mktemp -u).erofs
     register_file "$EROFS_IMAGE"
     # -L: set volume label
     # --all-root: make all files owned by root
     # -T0: set all timestamps to 0 for reproducibility
-    if ! mkfs.erofs -L "RA_PACKAGES" --all-root -T0 "$EROFS_IMAGE" "$TEMP_PACKAGES"; then
+    if ! mkfs.erofs --quiet -L "RA_PACKAGES" --all-root -T0 "$EROFS_IMAGE" "$TEMP_PACKAGES"; then
         print_error "Failed to create EROFS image"
         exit 1
     fi

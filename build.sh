@@ -44,6 +44,7 @@ cmdline_common="archisobasedir=%INSTALL_DIR%"
 
 declare -A boot_vars=(
   ["RA_BOOT_SPLASH"]="quiet splash loglevel=3 rd.udev.log_level=3 vt.global_cursor_default=0"
+  ["RA_BOOT_FAST"]="copytoram=n rootdelay=2"
   ["RA_BOOT_CMDLINE"]="${cmdline_common} archisosearchuuid=%ARCHISO_UUID% cow_label=RA_DATA cow_nofail=y"
   ["RA_LOOPBACK_CMDLINE"]="${cmdline_common} img_dev=UUID=\${archiso_img_dev_uuid} img_loop=\"\${iso_path}\""
 )

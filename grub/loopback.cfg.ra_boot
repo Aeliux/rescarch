@@ -35,7 +35,7 @@ menuentry "RescArch with boot logs" --class arch --class gnu-linux --class gnu -
 
 menuentry "RescArch fast boot" --class arch --class gnu-linux --class gnu --class os --id 'rescarch-fast' {
     set gfxpayload=keep
-    linux /%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux %RA_LOOPBACK_CMDLINE% copytoram=n
+    linux /%INSTALL_DIR%/boot/%ARCH%/vmlinuz-linux %RA_LOOPBACK_CMDLINE% %RA_BOOT_FAST%
     initrd /%INSTALL_DIR%/boot/%ARCH%/initramfs-linux.img
 }
 

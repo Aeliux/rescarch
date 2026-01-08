@@ -1,11 +1,12 @@
-# only run if /run/rescarch/greeting does not exist
-if [ ! -f /run/rescarch/greeting ]; then
-    touch /run/rescarch/greeting
+# only run if /tmp/rescarch/greeting does not exist
+if [ ! -f /tmp/rescarch/greeting ]; then
+    mkdir -p /tmp/rescarch
+    touch /tmp/rescarch/greeting
 else
-    return
+    return 0
 fi
 
-echo "Welcome to Rescarch"
+echo "Welcome to Rescarch!"
 echo
 
 # check if /var/rescarch/packages is a mount point

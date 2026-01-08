@@ -1,0 +1,19 @@
+# only run if /run/rescarch/greeting does not exist
+if [ ! -f /run/rescarch/greeting ]; then
+    touch /run/rescarch/greeting
+else
+    return
+fi
+
+echo "Welcome to Rescarch"
+echo
+
+# check if /var/rescarch/packages is a mount point
+if mountpoint -q /var/rescarch/packages; then
+    offline_repo_mounted=true
+fi
+
+if [ "$offline_repo_mounted" = true ]; then
+    echo "Currently pacman uses the offline repository"
+    echo "to use the online repository, unmount /var/rescarch/packages"
+fi

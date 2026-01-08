@@ -49,3 +49,5 @@ if [[ $- == *i* ]] && tput colors >/dev/null 2>&1 && [[ $(tput colors) -ge 8 ]];
   # second line: small glyph '»' in yellow
   PS1+="\[$YELLOW\]» \[$RESET\]"
 fi
+
+. .ra_greeting

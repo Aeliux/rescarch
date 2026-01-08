@@ -98,11 +98,8 @@ MKARCHISO_DEFAULT_ARGS=(
   -r
   -w /tmp/archiso-tmp-$$
   -o out/
+  -v
 )
-
-if [ "$DEBUG" = true ]; then
-  MKARCHISO_DEFAULT_ARGS+=(-v)
-fi
 
 echo "==> Building archiso"
 if [[ ${#MKARCHISO_ARGS[@]} -gt 0 ]]; then

@@ -32,32 +32,22 @@ OPTIONS:
     -p, --packages LIST     Comma-separated package list (required)
                             Example: base,linux,bash
                             Includes all dependencies automatically
-    -o, --output PATH       Output path for EROFS image (default: rescarch-offline.erofs)
+    -o, --output PATH       Output path for EROFS image (default: out/offline.img)
     --pacman-cache PATH     Pacman cache directory (default: /var/cache/pacman/pkg)
     -h, --help             Show this help message
 
 EXAMPLES:
     # Create offline repo with base system
-    $(basename "$0") -p base,linux,linux-firmware -o offline.erofs
-
-    # Create offline repo with full desktop environment
-    $(basename "$0") -p base,linux,plasma,firefox,thunderbird
+    $(basename "$0") -p base,linux,linux-firmware -o offline.img
 
     # Use custom pacman cache
-    $(basename "$0") -p base,linux --pacman-cache /mnt/cache -o offline.erofs
-
-NOTES:
-    - Requires root privileges
-    - All package dependencies are automatically resolved and included
-    - Package signatures are included for verification
-    - The output EROFS image can be passed to write.sh with -o option
-
+    $(basename "$0") -p base,linux --pacman-cache /mnt/cache -o offline.img
 EOF
 }
 
 # Parse command line arguments
 OFFLINE_PACKAGES=""
-OUTPUT_PATH="rescarch-offline.erofs"
+OUTPUT_PATH="out/offline.img"
 PACMAN_CACHE="/var/cache/pacman/pkg"
 
 while [[ $# -gt 0 ]]; do
@@ -116,12 +106,6 @@ fi
 
 # Check if output file already exists
 if [[ -f "$OUTPUT_PATH" ]]; then
-    print_warning "Output file already exists: $OUTPUT_PATH"
-    read -p "Overwrite? (y/N): " confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        echo "Operation cancelled."
-        exit 2
-    fi
     rm -f "$OUTPUT_PATH"
 fi
 
@@ -323,22 +307,9 @@ if [[ "$EROFS_SIZE" -eq 0 ]]; then
 fi
 EROFS_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B "$EROFS_SIZE")
 
-# Calculate space needed on device (with overhead)
-PACKAGES_SIZE_MB=$((EROFS_SIZE / 1024 / 1024 + 10))  # Add 10MB overhead
-
-print_success "EROFS image created: $OUTPUT_PATH"
-print_info "Image size: $EROFS_SIZE_HUMAN"
-print_info "Required partition size: ~${PACKAGES_SIZE_MB}MB"
+print_success "EROFS image created successfully"
 
 echo
-echo "========================================"
-echo ":: Offline Repository Created"
 echo "Packages: $PKG_COUNT"
 echo "Total size: $EROFS_SIZE_HUMAN"
 echo "Output file: $OUTPUT_PATH"
-echo
-echo ":: Usage"
-echo "Pass this image to write.sh:"
-echo "  sudo ./write.sh -i rescarch.iso -d /dev/sdX -o $OUTPUT_PATH"
-echo "========================================"
-echo
